@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "416103735008",
+    "project_id": "myteslat",
+    "storage_bucket": "myteslat.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:416103735008:android:a62ddb000a2635ff17ba85",
+        "android_client_info": {
+          "package_name": "com.example.teslame"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDFRODvfRCZslZ1KzEe7sumM0m259sQF58"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
