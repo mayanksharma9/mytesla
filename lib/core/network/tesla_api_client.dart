@@ -372,6 +372,29 @@ class TeslaApiClient {
     return UserProfile.fromJson(response.data['response'] as Map<String, dynamic>);
   }
 
+  // --- Metadata & Specifics ---
+
+  Future<Response> getVehicleOptions(String vin) async {
+    return await _dio.get('/api/1/dx/vehicles/options', queryParameters: {'vin': vin});
+  }
+
+  Future<Response> getWarrantyDetails(String vin) async {
+    return await _dio.get('/api/1/dx/warranty/details', queryParameters: {'vin': vin});
+  }
+
+  /// WARNING: This call costs $0.10 per request. Use sparingly and cache results!
+  Future<Response> getVehicleSpecs(String vin) async {
+    return await _dio.get('/api/1/vehicles/$vin/specs');
+  }
+
+  Future<Response> getNearbyChargingSites(String vehicleId) async {
+    return await _dio.get('/api/1/vehicles/$vehicleId/nearby_charging_sites');
+  }
+
+  Future<Response> getReleaseNotes(String vehicleId) async {
+    return await _dio.get('/api/1/vehicles/$vehicleId/release_notes');
+  }
+
   // --- Charging History ---
 
   Future<ChargingHistoryResponse> getChargingHistory() async {

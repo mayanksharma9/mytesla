@@ -480,17 +480,29 @@ class ChargingHistoryResponse {
   Map<String, dynamic> toJson() => _$ChargingHistoryResponseToJson(this);
 }
 
+@HiveType(typeId: 7)
 @JsonSerializable()
 class ChargingHistoryEntry {
+  @HiveField(0)
   @JsonKey(name: 'charge_start_date_time')
   final String? chargeStartDateTime;
+  
+  @HiveField(1)
   @JsonKey(name: 'charge_stop_date_time')
   final String? chargeStopDateTime;
+  
+  @HiveField(2)
   @JsonKey(name: 'energy_kwh', fromJson: _dynamicToDouble)
   final double energyKwh;
+  
+  @HiveField(3)
   @JsonKey(name: 'total_cost', fromJson: _dynamicToDouble)
   final double totalCost;
+  
+  @HiveField(4)
   final String? vin;
+  
+  @HiveField(5)
   @JsonKey(name: 'location_id')
   final String? locationId;
 
@@ -553,15 +565,34 @@ class TeslaProduct {
   Map<String, dynamic> toJson() => _$TeslaProductToJson(this);
 }
 
+@HiveType(typeId: 3)
+@JsonSerializable()
 class BatterySnapshot {
+  @HiveField(0)
   final DateTime timestamp;
+  
+  @HiveField(1)
   final int batteryLevel;
+  
+  @HiveField(2)
   final double batteryRange;
+  
+  @HiveField(3)
   final double idealBatteryRange;
+  
+  @HiveField(4)
   final double outsideTemp;
+  
+  @HiveField(5)
   final bool batteryHeaterOn;
+  
+  @HiveField(6)
   final int chargeLimitSoc;
+  
+  @HiveField(7)
   final String shiftState; // P, D, R, N
+  
+  @HiveField(8)
   final double odometer;
 
   BatterySnapshot({
@@ -576,38 +607,33 @@ class BatterySnapshot {
     required this.odometer,
   });
 
-  factory BatterySnapshot.fromJson(Map<String, dynamic> json) => BatterySnapshot(
-    timestamp: DateTime.parse(json['timestamp'] as String),
-    batteryLevel: (json['battery_level'] as num).toInt(),
-    batteryRange: (json['battery_range'] as num).toDouble(),
-    idealBatteryRange: (json['ideal_battery_range'] as num).toDouble(),
-    outsideTemp: (json['outside_temp'] as num).toDouble(),
-    batteryHeaterOn: json['battery_heater_on'] as bool,
-    chargeLimitSoc: (json['charge_limit_soc'] as num).toInt(),
-    shiftState: json['shift_state'] as String,
-    odometer: (json['odometer'] as num?)?.toDouble() ?? 0.0,
-  );
-
-  Map<String, dynamic> toJson() => {
-    'timestamp': timestamp.toIso8601String(),
-    'battery_level': batteryLevel,
-    'battery_range': batteryRange,
-    'ideal_battery_range': idealBatteryRange,
-    'outside_temp': outsideTemp,
-    'battery_heater_on': batteryHeaterOn,
-    'charge_limit_soc': chargeLimitSoc,
-    'shift_state': shiftState,
-    'odometer': odometer,
-  };
+  factory BatterySnapshot.fromJson(Map<String, dynamic> json) => _$BatterySnapshotFromJson(json);
+  Map<String, dynamic> toJson() => _$BatterySnapshotToJson(this);
 }
 
+@HiveType(typeId: 4)
+@JsonSerializable()
 class ChargeSession {
+  @HiveField(0)
   final DateTime timestamp;
+  
+  @HiveField(1)
   final double energyAddedKwh;
+  
+  @HiveField(2)
   final double cost;
+  
+  @HiveField(3)
+  @JsonKey(toJson: _durationToJson, fromJson: _durationFromJson)
   final Duration duration;
+  
+  @HiveField(4)
   final int startBattery;
+  
+  @HiveField(5)
   final int endBattery;
+  
+  @HiveField(6)
   final String? location;
 
   ChargeSession({
@@ -620,37 +646,41 @@ class ChargeSession {
     this.location,
   });
 
-  factory ChargeSession.fromJson(Map<String, dynamic> json) => ChargeSession(
-    timestamp: DateTime.parse(json['timestamp'] as String),
-    energyAddedKwh: (json['energy_added_kwh'] as num).toDouble(),
-    cost: (json['cost'] as num).toDouble(),
-    duration: Duration(seconds: (json['duration_seconds'] as num).toInt()),
-    startBattery: (json['start_battery'] as num).toInt(),
-    endBattery: (json['end_battery'] as num).toInt(),
-    location: json['location'] as String?,
-  );
-
-  Map<String, dynamic> toJson() => {
-    'timestamp': timestamp.toIso8601String(),
-    'energy_added_kwh': energyAddedKwh,
-    'cost': cost,
-    'duration_seconds': duration.inSeconds,
-    'start_battery': startBattery,
-    'end_battery': endBattery,
-    'location': location,
-  };
+  factory ChargeSession.fromJson(Map<String, dynamic> json) => _$ChargeSessionFromJson(json);
+  Map<String, dynamic> toJson() => _$ChargeSessionToJson(this);
 }
 
+@HiveType(typeId: 5)
+@JsonSerializable()
 class DriveSession {
+  @HiveField(0)
   final DateTime startTime;
+  
+  @HiveField(1)
   final DateTime endTime;
+  
+  @HiveField(2)
   final int startBattery;
+  
+  @HiveField(3)
   final int endBattery;
+  
+  @HiveField(4)
   final double startRange;
+  
+  @HiveField(5)
   final double endRange;
+  
+  @HiveField(6)
   final double odometerStart;
+  
+  @HiveField(7)
   final double odometerEnd;
+  
+  @HiveField(8)
   final double efficiencyScore;
+  
+  @HiveField(9)
   final double avgOutsideTemp;
 
   DriveSession({
@@ -666,40 +696,32 @@ class DriveSession {
     required this.avgOutsideTemp,
   });
 
-  factory DriveSession.fromJson(Map<String, dynamic> json) => DriveSession(
-    startTime: DateTime.parse(json['start_time'] as String),
-    endTime: DateTime.parse(json['end_time'] as String),
-    startBattery: (json['start_battery'] as num).toInt(),
-    endBattery: (json['end_battery'] as num).toInt(),
-    startRange: (json['start_range'] as num).toDouble(),
-    endRange: (json['end_range'] as num).toDouble(),
-    odometerStart: (json['odometer_start'] as num).toDouble(),
-    odometerEnd: (json['odometer_end'] as num).toDouble(),
-    efficiencyScore: (json['efficiency_score'] as num).toDouble(),
-    avgOutsideTemp: (json['avg_outside_temp'] as num).toDouble(),
-  );
-
-  Map<String, dynamic> toJson() => {
-    'start_time': startTime.toIso8601String(),
-    'end_time': endTime.toIso8601String(),
-    'start_battery': startBattery,
-    'end_battery': endBattery,
-    'start_range': startRange,
-    'end_range': endRange,
-    'odometer_start': odometerStart,
-    'odometer_end': odometerEnd,
-    'efficiency_score': efficiencyScore,
-    'avg_outside_temp': avgOutsideTemp,
-  };
+  factory DriveSession.fromJson(Map<String, dynamic> json) => _$DriveSessionFromJson(json);
+  Map<String, dynamic> toJson() => _$DriveSessionToJson(this);
 }
 
+@HiveType(typeId: 6)
+@JsonSerializable()
 class LocalVehicleInfo {
+  @HiveField(0)
   final String firmwareVersion;
+  
+  @HiveField(1)
   final double odometer;
+  
+  @HiveField(2)
   final double tireFL;
+  
+  @HiveField(3)
   final double tireFR;
+  
+  @HiveField(4)
   final double tireRL;
+  
+  @HiveField(5)
   final double tireRR;
+  
+  @HiveField(6)
   final DateTime lastUpdated;
 
   LocalVehicleInfo({
@@ -712,25 +734,68 @@ class LocalVehicleInfo {
     required this.lastUpdated,
   });
 
-  factory LocalVehicleInfo.fromJson(Map<String, dynamic> json) => LocalVehicleInfo(
-    firmwareVersion: json['firmware_version'] as String,
-    odometer: (json['odometer'] as num).toDouble(),
-    tireFL: (json['tire_fl'] as num).toDouble(),
-    tireFR: (json['tire_fr'] as num).toDouble(),
-    tireRL: (json['tire_rl'] as num).toDouble(),
-    tireRR: (json['tire_rr'] as num).toDouble(),
-    lastUpdated: DateTime.parse(json['last_updated'] as String),
-  );
+  factory LocalVehicleInfo.fromJson(Map<String, dynamic> json) => _$LocalVehicleInfoFromJson(json);
+  Map<String, dynamic> toJson() => _$LocalVehicleInfoToJson(this);
+}
 
-  Map<String, dynamic> toJson() => {
-    'firmware_version': firmwareVersion,
-    'odometer': odometer,
-    'tire_fl': tireFL,
-    'tire_fr': tireFR,
-    'tire_rl': tireRL,
-    'tire_rr': tireRR,
-    'last_updated': lastUpdated.toIso8601String(),
-  };
+@HiveType(typeId: 8)
+@JsonSerializable()
+class VehicleCache {
+  @HiveField(0)
+  final String vin;
+  
+  @HiveField(1)
+  final double? batteryCapacityKwh;
+  
+  @HiveField(2)
+  final double? originalRangeRating;
+  
+  @HiveField(3)
+  final DateTime? warrantyExpiryDate;
+  
+  @HiveField(4)
+  final double? warrantyMilesRemaining;
+  
+  @HiveField(5)
+  final String? batteryType; // LFP, NCA, NCM
+  
+  @HiveField(6)
+  final int? motorCount;
+  
+  @HiveField(7)
+  final List<String>? options;
+
+  VehicleCache({
+    required this.vin,
+    this.batteryCapacityKwh,
+    this.originalRangeRating,
+    this.warrantyExpiryDate,
+    this.warrantyMilesRemaining,
+    this.batteryType,
+    this.motorCount,
+    this.options,
+  });
+
+  factory VehicleCache.fromJson(Map<String, dynamic> json) => _$VehicleCacheFromJson(json);
+  Map<String, dynamic> toJson() => _$VehicleCacheToJson(this);
+}
+
+@HiveType(typeId: 9)
+class UserPrefs {
+  @HiveField(0)
+  final double? electricityRatePerKwh; // For home charging cost calc
+  
+  @HiveField(1)
+  final bool? notificationsEnabled;
+  
+  @HiveField(2)
+  final String? preferredTheme;
+
+  UserPrefs({
+    this.electricityRatePerKwh,
+    this.notificationsEnabled,
+    this.preferredTheme,
+  });
 }
 
 // Helpers for JSON

@@ -1,5 +1,7 @@
 import 'package:get_it/get_it.dart';
 import 'package:dio/dio.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:voltride/features/dashboard/data/models/tesla_models.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:voltride/core/network/tesla_api_client.dart';
 import 'package:voltride/features/auth/domain/auth_repository.dart';
@@ -9,6 +11,8 @@ import 'package:voltride/features/dashboard/presentation/bloc/vehicle_bloc.dart'
 import 'package:voltride/features/charging/presentation/bloc/charging_bloc.dart';
 import 'package:voltride/features/dashboard/domain/vehicle_repository.dart';
 import 'package:voltride/features/dashboard/data/repositories/vehicle_repository_impl.dart';
+import 'package:voltride/features/dashboard/data/services/telemetry_polling_service.dart';
+import 'package:voltride/features/dashboard/data/services/intelligence_engine.dart';
 import 'package:voltride/features/charging/domain/charging_repository.dart';
 import 'package:voltride/features/charging/data/repositories/charging_repository_impl.dart';
 import 'package:voltride/features/dashboard/data/services/telemetry_analytics_service.dart';
@@ -25,7 +29,7 @@ final sl = GetIt.instance; // sl stands for Service Locator
 Future<void> init() async {
   // BLoCs
   sl.registerLazySingleton(() => AuthBloc(sl(), sl()));
-  sl.registerLazySingleton(() => VehicleBloc(sl(), sl(), sl()));
+  sl.registerLazySingleton(() => VehicleBloc(sl(), sl(), sl(), sl(), sl()));
   sl.registerLazySingleton(() => ChargingBloc(sl()));
   sl.registerLazySingleton(() => TelemetryBloc(sl()));
 
@@ -35,7 +39,14 @@ Future<void> init() async {
   
   // Choose between Production and Mock repository
   // For production builds, we use VehicleRepositoryImpl
-  sl.registerLazySingleton<VehicleRepository>(() => VehicleRepositoryImpl(sl(), sl()));
+  sl.registerLazySingleton<VehicleRepository>(() => VehicleRepositoryImpl(
+    sl(), // apiClient
+    sl(), // firestore
+    sl(), // batteryBox
+    sl(), // tripBox
+    sl(), // chargeBox
+    sl(), // vehicleCacheBox
+  ));
   sl.registerLazySingleton<ChargingRepository>(() => ChargingRepositoryImpl(sl(), sl()));
   sl.registerLazySingleton<TelemetryRepository>(() => TelemetryRepositoryImpl(sl(), sl()));
   sl.registerLazySingleton<TripRepository>(() => TripRepository(sl()));
@@ -46,9 +57,20 @@ Future<void> init() async {
 
   // Services
   sl.registerLazySingleton(() => TelemetryAnalyticsService());
+  sl.registerLazySingleton(() => TelemetryPollingService(sl()));
+  sl.registerLazySingleton(() => IntelligenceEngine(sl()));
 
   // External
   sl.registerLazySingleton(() => Dio());
   sl.registerLazySingleton(() => const FlutterSecureStorage());
   sl.registerLazySingleton(() => FirebaseFirestore.instance);
+  
+  // Hive Boxes
+  sl.registerLazySingleton(() => Hive.box('telemetry_history'));
+  sl.registerLazySingleton(() => Hive.box<BatterySnapshot>('battery_snapshots'));
+  sl.registerLazySingleton(() => Hive.box<DriveSession>('trip_sessions'));
+  sl.registerLazySingleton(() => Hive.box<ChargeSession>('charge_sessions'));
+  sl.registerLazySingleton(() => Hive.box<VehicleCache>('vehicle_cache'));
+  sl.registerLazySingleton(() => Hive.box('user_prefs'));
+  sl.registerLazySingleton(() => Hive.box('vehicle_settings'));
 }

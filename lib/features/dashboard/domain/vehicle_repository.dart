@@ -28,7 +28,17 @@ abstract class VehicleRepository {
   // Security
   Future<void> setSentryMode(String vehicleId, bool on);
   Future<void> setValetMode(String vehicleId, bool on, {String? password});
-  
+  // Metadata & Specifics
+  Future<VehicleCache> getVehicleSpecs(String vin);
+  Future<void> syncWarranty(String vin);
+  Future<List<ChargingLocation>> getNearbyChargingSites(String vehicleId);
+  Future<String?> getReleaseNotes(String vehicleId);
+
   // Power & Energy
-  Future<List<TeslaProduct>> getProducts();
+  Future<List<domain.TeslaProduct>> getProducts();
+  
+  // History & Analytics (Local)
+  Future<List<BatterySnapshot>> getBatteryHistory(String vin);
+  Future<List<DriveSession>> getTripHistory(String vin);
+  Future<List<ChargeSession>> getChargeHistoryLocal(String vin);
 }

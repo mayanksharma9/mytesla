@@ -9,8 +9,21 @@ import '../models/tesla_models.dart';
 class VehicleRepositoryImpl implements VehicleRepository {
   final TeslaApiClient _apiClient;
   final FirebaseFirestore _firestore;
+  
+  // Hive Boxes
+  final Box<BatterySnapshot> _batteryBox;
+  final Box<DriveSession> _tripBox;
+  final Box<ChargeSession> _chargeBox;
+  final Box<VehicleCache> _vehicleCacheBox;
 
-  VehicleRepositoryImpl(this._apiClient, this._firestore);
+  VehicleRepositoryImpl(
+    this._apiClient, 
+    this._firestore,
+    this._batteryBox,
+    this._tripBox,
+    this._chargeBox,
+    this._vehicleCacheBox,
+  );
 
   @override
   Future<List<Vehicle>> getVehicles() async {
@@ -54,7 +67,21 @@ class VehicleRepositoryImpl implements VehicleRepository {
         'last_sync': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
-      // 2. Add Telemetry Snapshot for trends
+      // 2. Save local BatterySnapshot for local-first analytics
+      final snapshot = BatterySnapshot(
+        timestamp: DateTime.now(),
+        batteryLevel: vehicle.batteryLevel,
+        batteryRange: vehicle.batteryRange,
+        idealBatteryRange: vehicle.idealBatteryRange ?? 0.0,
+        outsideTemp: vehicle.outsideTemp,
+        batteryHeaterOn: vehicle.batteryHeaterOn,
+        chargeLimitSoc: vehicle.chargeLimitSoc,
+        shiftState: vehicle.shiftState ?? 'P',
+        odometer: vehicle.odometer,
+      );
+      await _batteryBox.add(snapshot);
+
+      // 3. Add Telemetry Snapshot to Firestore for cloud sync
       await _firestore.collection('vehicles').doc(vin).collection('telemetry_history').add({
         'timestamp': FieldValue.serverTimestamp(),
         'battery_level': vehicle.batteryLevel,
@@ -152,6 +179,97 @@ class VehicleRepositoryImpl implements VehicleRepository {
     } catch (e) {
       rethrow;
     }
+  }
+
+  // --- Features 1-11 Data Implementation ---
+
+  @override
+  Future<VehicleCache> getVehicleSpecs(String vin) async {
+    // 1. Check Cache
+    if (_vehicleCacheBox.containsKey(vin)) {
+      return _vehicleCacheBox.get(vin)!;
+    }
+
+    try {
+      // 2. Fetch from Fleet API
+      final response = await _apiClient.getVehicleSpecs(vin);
+      final data = response.data['response'];
+      
+      final specs = VehicleCache(
+        vin: vin,
+        batteryCapacityKwh: _dynamicToDouble(data['battery_capacity_kwh']),
+        originalRangeRating: _dynamicToDouble(data['original_range_rating']),
+        batteryType: data['battery_type'],
+        motorCount: _dynamicToInt(data['motor_count']),
+      );
+
+      // 3. Persist Forever (It's a $0.10 call!)
+      await _vehicleCacheBox.put(vin, specs);
+      return specs;
+    } catch (e) {
+      print('VehicleRepository: Failed to fetch specs: $e');
+      rethrow;
+    }
+  }
+
+  @override
+  Future<void> syncWarranty(String vin) async {
+    try {
+      final response = await _apiClient.getWarrantyDetails(vin);
+      final data = response.data['response'];
+      
+      final oldCache = _vehicleCacheBox.get(vin);
+      final newCache = VehicleCache(
+        vin: vin,
+        batteryCapacityKwh: oldCache?.batteryCapacityKwh,
+        originalRangeRating: oldCache?.originalRangeRating,
+        warrantyExpiryDate: data['warranty_expiry_date'] != null ? DateTime.parse(data['warranty_expiry_date']) : null,
+        warrantyMilesRemaining: _dynamicToDouble(data['miles_remaining']),
+        batteryType: oldCache?.batteryType,
+        motorCount: oldCache?.motorCount,
+        options: oldCache?.options,
+      );
+      
+      await _vehicleCacheBox.put(vin, newCache);
+    } catch (e) {
+      print('VehicleRepository: Failed to sync warranty: $e');
+    }
+  }
+
+  @override
+  Future<List<ChargingLocation>> getNearbyChargingSites(String vehicleId) async {
+    try {
+      final response = await _apiClient.getNearbyChargingSites(vehicleId);
+      final List<dynamic> data = response.data['response']['superchargers'] ?? [];
+      return data.map((json) => ChargingLocation.fromJson(json)).toList();
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  @override
+  Future<String?> getReleaseNotes(String vehicleId) async {
+    try {
+      final response = await _apiClient.getReleaseNotes(vehicleId);
+      return response.data['response']?['notes'];
+    } catch (e) {
+      return null;
+    }
+  }
+
+  @override
+  Future<List<BatterySnapshot>> getBatteryHistory(String vin) async {
+    return _batteryBox.values.where((s) => true).toList(); // Filtering by VIN logic here if multi-vehicle
+  }
+
+  @override
+  Future<List<DriveSession>> getTripHistory(String vin) async {
+    return _tripBox.values.toList();
+  }
+
+  @override
+  Future<List<ChargeSession>> getChargeHistoryLocal(String vin) async {
+    return _chargeBox.values.toList();
   }
 
   /// Helper to ensure vehicle is awake before sending a command.
@@ -261,5 +379,19 @@ class VehicleRepositoryImpl implements VehicleRepository {
       print('Error mapping detailed vehicle: $e');
       rethrow;
     }
+  double _dynamicToDouble(dynamic value) {
+    if (value == null) return 0.0;
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    if (value is String) return double.tryParse(value) ?? 0.0;
+    return 0.0;
+  }
+
+  int _dynamicToInt(dynamic value) {
+    if (value == null) return 0;
+    if (value is int) return value;
+    if (value is double) return value.toInt();
+    if (value is String) return int.tryParse(value) ?? 0;
+    return 0;
   }
 }

@@ -17,8 +17,24 @@ void main() async {
   
   // Initialize Hive
   await Hive.initFlutter();
+  
+  // Register Adapters
+  Hive.registerAdapter(VehicleStateAdapter());
+  Hive.registerAdapter(BatterySnapshotAdapter());
+  Hive.registerAdapter(ChargeSessionAdapter());
+  Hive.registerAdapter(DriveSessionAdapter());
+  Hive.registerAdapter(LocalVehicleInfoAdapter());
+  Hive.registerAdapter(ChargingHistoryEntryAdapter());
+  Hive.registerAdapter(VehicleCacheAdapter());
+
+  // Open Boxes
   await Hive.openBox('telemetry_history');
+  await Hive.openBox<BatterySnapshot>('battery_snapshots');
+  await Hive.openBox<DriveSession>('trip_sessions');
+  await Hive.openBox<ChargeSession>('charge_sessions');
+  await Hive.openBox<VehicleCache>('vehicle_cache');
   await Hive.openBox('vehicle_settings');
+  await Hive.openBox('user_prefs');
 
   // Initialize Firebase
   await Firebase.initializeApp(

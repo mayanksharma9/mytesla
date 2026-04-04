@@ -27,6 +27,38 @@ class TelemetryAnalyticsService {
     return (currentMaxRange / originalMaxRange) * 100;
   }
 
+  String getGradeFromScore(double score) {
+    if (score >= 95) return 'A';
+    if (score >= 90) return 'B';
+    if (score >= 85) return 'C';
+    if (score >= 80) return 'D';
+    return 'F';
+  }
+
+  Map<String, dynamic> generateHealthReport(VehicleCache specs, BatterySnapshot latest) {
+    // 1. Calculate Estimated Max Range at 100%
+    // If battery is at 80% and range is 200mi, then 100% is 250mi.
+    final estMaxRange = (latest.idealBatteryRange / (latest.batteryLevel / 100.0));
+    final originalRange = specs.originalRangeRating ?? 0.0;
+    
+    final healthScore = getHealthScore(estMaxRange, originalRange);
+    final degradation = 100.0 - healthScore;
+    final healthGrade = getGradeFromScore(healthScore);
+
+    // 2. Estimated Capacity
+    final estCapacity = (specs.batteryCapacityKwh ?? 0.0) * (healthScore / 100.0);
+
+    return {
+      'grade': healthGrade,
+      'score': healthScore,
+      'degradation': degradation,
+      'estimated_capacity': estCapacity,
+      'original_capacity': specs.batteryCapacityKwh,
+      'estimated_max_range': estMaxRange,
+      'original_range': originalRange,
+    };
+  }
+
   // Gets daily averages for SOC
   Map<DateTime, double> getDailySocAverages(List<BatterySnapshot> history) {
     final Map<DateTime, List<double>> dailyPoints = {};

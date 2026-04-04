@@ -5,6 +5,7 @@ import 'dart:ui';
 import 'dart:math' as math;
 import 'package:voltride/core/utils/injection_container.dart' as di;
 import 'package:voltride/features/dashboard/data/services/telemetry_analytics_service.dart';
+import 'package:voltride/features/dashboard/data/services/intelligence_engine.dart';
 import 'package:voltride/features/dashboard/domain/vehicle.dart';
 import 'package:voltride/features/dashboard/presentation/bloc/vehicle_bloc.dart';
 import 'package:voltride/features/dashboard/data/models/tesla_models.dart' as models;
@@ -107,8 +108,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   batteryLevel: vehicle.batteryLevel.toDouble(),
                   range: vehicle.batteryRange.toInt(),
                   isCharging: vehicle.state == 'charging',
-                  efficiencyScore: analytics.calculateEfficiencyScoreToday(state.batteryHistory),
+                efficiencyScore: analytics.calculateEfficiencyScoreToday(state.batteryHistory),
                 ),
+                const SizedBox(height: 32),
+                _buildInsightsHub(context, state),
                 const SizedBox(height: 32),
                 _buildSectionTitle(context, 'DRIVE SUMMARY', 'TODAY'),
                 const SizedBox(height: 16),
@@ -327,56 +330,146 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   Widget _buildSuggestionBanner(Vehicle vehicle) {
-    String? suggestion;
-    IconData icon = Icons.info_outline;
-    Color color = VoltColors.primary;
+    return BlocBuilder<VehicleBloc, VehicleState>(
+      builder: (context, state) {
+        if (state.suggestions.isEmpty) return const SizedBox.shrink();
 
-    if (vehicle.batteryLevel < 20) {
-        suggestion = 'Battery is low (${vehicle.batteryLevel}%). Nearby superchargers found.';
-        icon = Icons.battery_alert;
-        color = Colors.orangeAccent;
-    } else if (vehicle.tpmsPressureFl != null && (vehicle.tpmsPressureFl! < 31 || vehicle.tpmsPressureFl! > 45)) {
-        final pressureStr = UnitConverter.formatPressure(vehicle.tpmsPressureFl, unit: vehicle.pressureUnit);
-        suggestion = 'Tire pressure is abnormal ($pressureStr). Check tires for safety.';
-        icon = Icons.tire_repair;
-        color = Colors.redAccent;
-    } else if (vehicle.outsideTemp < 7.0 && !vehicle.isClimateOn) {
-        final tempStr = UnitConverter.formatTemperature(vehicle.outsideTemp, useFahrenheit: vehicle.useFahrenheit);
-        suggestion = "It's cold outside ($tempStr). Warm up the cabin for a better drive?";
-        icon = Icons.ac_unit;
-        color = Colors.lightBlueAccent;
-    } else if (vehicle.isClimateOn) {
-        suggestion = 'Climate is currently running. Battery drain: ~3%/hr.';
-        icon = Icons.ac_unit;
-        color = Colors.blueAccent;
-    }
+        // Show the priority suggestion (for now, just the first one)
+        final suggestion = state.suggestions.first;
+        final color = _getSuggestionColor(suggestion.title);
+        final icon = _getSuggestionIcon(suggestion.icon);
 
-    if (suggestion == null) return const SizedBox.shrink();
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withOpacity(0.2)),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: color, size: 20),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              suggestion,
-              style: TextStyle(
-                color: color,
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
+        return Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: color.withOpacity(0.2)),
           ),
-        ],
-      ),
+          child: Row(
+            children: [
+              Icon(icon, color: color, size: 20),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      suggestion.title.toUpperCase(),
+                      style: TextStyle(
+                        color: color,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      suggestion.description,
+                      style: TextStyle(
+                        color: color.withOpacity(0.8),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (suggestion.isActionable)
+                TextButton(
+                  onPressed: () {
+                    // Logic to handle actions like "Set to 100%"
+                    if (suggestion.actionLabel == 'Set to 100%') {
+                      context.read<VehicleBloc>().add(SetChargeLimit(vehicle.id, 100));
+                    } else if (suggestion.actionLabel == 'Set to 80%') {
+                      context.read<VehicleBloc>().add(SetChargeLimit(vehicle.id, 80));
+                    }
+                  },
+                  child: Text(
+                    suggestion.actionLabel ?? 'ACTION',
+                    style: TextStyle(color: color, fontWeight: FontWeight.bold),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
     );
+  }
+
+  Color _getSuggestionColor(String title) {
+    if (title.contains('Warning') || title.contains('Low')) return Colors.redAccent;
+    if (title.contains('Optimize') || title.contains('Calibration')) return Colors.orangeAccent;
+    return VoltColors.primary;
+  }
+
+  IconData _getSuggestionIcon(String iconName) {
+    switch (iconName) {
+      case 'battery_charging_full': return Icons.battery_charging_full;
+      case 'battery_saver': return Icons.battery_saver;
+      case 'warning': return Icons.warning_amber;
+      case 'verified': return Icons.verified_user_outlined;
+      case 'tire_repair': return Icons.tire_repair;
+      case 'visibility': return Icons.visibility_outlined;
+      default: return Icons.info_outline;
+    }
+  }
+
+  Widget _buildInsightsHub(BuildContext context, VehicleState state) {
+    final analytics = di.sl<TelemetryAnalyticsService>();
+    final report = analytics.generateBatteryHealthReport(state.batteryHistory, state.vehicleCache);
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionTitle(context, 'VEHICLE INSIGHTS', 'LIVE'),
+        const SizedBox(height: 16),
+        SizedBox(
+          height: 140,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            children: [
+              // Battery Health Card
+              _InsightCard(
+                title: 'HEALTH GRADE',
+                value: report.healthGrade,
+                subtitle: '${report.degradationPercentage.toStringAsFixed(1)}% Degradation',
+                icon: Icons.health_and_safety_outlined,
+                color: _getGradeColor(report.healthGrade),
+              ),
+              const SizedBox(width: 16),
+              // Warranty Card
+              if (state.vehicleCache?.batteryWarrantyExpiry != null)
+                _InsightCard(
+                  title: 'WARRANTY EXPIRY',
+                  value: state.vehicleCache!.batteryWarrantyExpiry!.year.toString(),
+                  subtitle: '${state.vehicleCache!.batteryWarrantyExpiry!.difference(DateTime.now()).inDays ~/ 365} Years Left',
+                  icon: Icons.shield_outlined,
+                  color: Colors.blueAccent,
+                ),
+              const SizedBox(width: 16),
+              // Battery Type Spec Card
+              _InsightCard(
+                title: 'BATTERY TYPE',
+                value: state.vehicleCache?.batteryType?.toUpperCase() ?? 'NCA',
+                subtitle: state.vehicleCache?.batteryType == 'LFP' ? 'Charge to 100%' : 'Charge to 80%',
+                icon: Icons.settings_suggest_outlined,
+                color: Colors.purpleAccent,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Color _getGradeColor(String grade) {
+    switch (grade) {
+      case 'A': return Colors.greenAccent;
+      case 'B': return Colors.lightGreenAccent;
+      case 'C': return Colors.orangeAccent;
+      default: return Colors.redAccent;
+    }
   }
 
   Widget _quickControls(BuildContext context, VehicleState state) {
@@ -929,6 +1022,88 @@ class _ControlCircle extends StatelessWidget {
               fontWeight: FontWeight.w900,
               letterSpacing: 1,
               color: isActive ? VoltColors.primary : Colors.grey,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+class _InsightCard extends StatelessWidget {
+  final String title;
+  final String value;
+  final String subtitle;
+  final IconData icon;
+  final Color color;
+
+  const _InsightCard({
+    required this.title,
+    required this.value,
+    required this.subtitle,
+    required this.icon,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      width: 160,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF252525) : Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: isDark ? Colors.white.withOpacity(0.05) : Colors.grey.withOpacity(0.1),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Icon(icon, size: 20, color: color),
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: color,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ],
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w900,
+                  height: 1.1,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.grey.withOpacity(0.8),
+                ),
+              ),
+            ],
+          ),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 9,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1,
+              color: Colors.grey.withOpacity(0.5),
             ),
           ),
         ],

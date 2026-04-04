@@ -70,6 +70,373 @@ class VehicleStateAdapter extends TypeAdapter<VehicleState> {
           typeId == other.typeId;
 }
 
+class ChargingHistoryEntryAdapter extends TypeAdapter<ChargingHistoryEntry> {
+  @override
+  final int typeId = 7;
+
+  @override
+  ChargingHistoryEntry read(BinaryReader reader) {
+    final numOfFields = reader.readByte();
+    final fields = <int, dynamic>{
+      for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
+    };
+    return ChargingHistoryEntry(
+      chargeStartDateTime: fields[0] as String?,
+      chargeStopDateTime: fields[1] as String?,
+      energyKwh: fields[2] as double,
+      totalCost: fields[3] as double,
+      vin: fields[4] as String?,
+      locationId: fields[5] as String?,
+    );
+  }
+
+  @override
+  void write(BinaryWriter writer, ChargingHistoryEntry obj) {
+    writer
+      ..writeByte(6)
+      ..writeByte(0)
+      ..write(obj.chargeStartDateTime)
+      ..writeByte(1)
+      ..write(obj.chargeStopDateTime)
+      ..writeByte(2)
+      ..write(obj.energyKwh)
+      ..writeByte(3)
+      ..write(obj.totalCost)
+      ..writeByte(4)
+      ..write(obj.vin)
+      ..writeByte(5)
+      ..write(obj.locationId);
+  }
+
+  @override
+  int get hashCode => typeId.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ChargingHistoryEntryAdapter &&
+          runtimeType == other.runtimeType &&
+          typeId == other.typeId;
+}
+
+class BatterySnapshotAdapter extends TypeAdapter<BatterySnapshot> {
+  @override
+  final int typeId = 3;
+
+  @override
+  BatterySnapshot read(BinaryReader reader) {
+    final numOfFields = reader.readByte();
+    final fields = <int, dynamic>{
+      for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
+    };
+    return BatterySnapshot(
+      timestamp: fields[0] as DateTime,
+      batteryLevel: fields[1] as int,
+      batteryRange: fields[2] as double,
+      idealBatteryRange: fields[3] as double,
+      outsideTemp: fields[4] as double,
+      batteryHeaterOn: fields[5] as bool,
+      chargeLimitSoc: fields[6] as int,
+      shiftState: fields[7] as String,
+      odometer: fields[8] as double,
+    );
+  }
+
+  @override
+  void write(BinaryWriter writer, BatterySnapshot obj) {
+    writer
+      ..writeByte(9)
+      ..writeByte(0)
+      ..write(obj.timestamp)
+      ..writeByte(1)
+      ..write(obj.batteryLevel)
+      ..writeByte(2)
+      ..write(obj.batteryRange)
+      ..writeByte(3)
+      ..write(obj.idealBatteryRange)
+      ..writeByte(4)
+      ..write(obj.outsideTemp)
+      ..writeByte(5)
+      ..write(obj.batteryHeaterOn)
+      ..writeByte(6)
+      ..write(obj.chargeLimitSoc)
+      ..writeByte(7)
+      ..write(obj.shiftState)
+      ..writeByte(8)
+      ..write(obj.odometer);
+  }
+
+  @override
+  int get hashCode => typeId.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is BatterySnapshotAdapter &&
+          runtimeType == other.runtimeType &&
+          typeId == other.typeId;
+}
+
+class ChargeSessionAdapter extends TypeAdapter<ChargeSession> {
+  @override
+  final int typeId = 4;
+
+  @override
+  ChargeSession read(BinaryReader reader) {
+    final numOfFields = reader.readByte();
+    final fields = <int, dynamic>{
+      for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
+    };
+    return ChargeSession(
+      timestamp: fields[0] as DateTime,
+      energyAddedKwh: fields[1] as double,
+      cost: fields[2] as double,
+      duration: fields[3] as Duration,
+      startBattery: fields[4] as int,
+      endBattery: fields[5] as int,
+      location: fields[6] as String?,
+    );
+  }
+
+  @override
+  void write(BinaryWriter writer, ChargeSession obj) {
+    writer
+      ..writeByte(7)
+      ..writeByte(0)
+      ..write(obj.timestamp)
+      ..writeByte(1)
+      ..write(obj.energyAddedKwh)
+      ..writeByte(2)
+      ..write(obj.cost)
+      ..writeByte(3)
+      ..write(obj.duration)
+      ..writeByte(4)
+      ..write(obj.startBattery)
+      ..writeByte(5)
+      ..write(obj.endBattery)
+      ..writeByte(6)
+      ..write(obj.location);
+  }
+
+  @override
+  int get hashCode => typeId.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ChargeSessionAdapter &&
+          runtimeType == other.runtimeType &&
+          typeId == other.typeId;
+}
+
+class DriveSessionAdapter extends TypeAdapter<DriveSession> {
+  @override
+  final int typeId = 5;
+
+  @override
+  DriveSession read(BinaryReader reader) {
+    final numOfFields = reader.readByte();
+    final fields = <int, dynamic>{
+      for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
+    };
+    return DriveSession(
+      startTime: fields[0] as DateTime,
+      endTime: fields[1] as DateTime,
+      startBattery: fields[2] as int,
+      endBattery: fields[3] as int,
+      startRange: fields[4] as double,
+      endRange: fields[5] as double,
+      odometerStart: fields[6] as double,
+      odometerEnd: fields[7] as double,
+      efficiencyScore: fields[8] as double,
+      avgOutsideTemp: fields[9] as double,
+    );
+  }
+
+  @override
+  void write(BinaryWriter writer, DriveSession obj) {
+    writer
+      ..writeByte(10)
+      ..writeByte(0)
+      ..write(obj.startTime)
+      ..writeByte(1)
+      ..write(obj.endTime)
+      ..writeByte(2)
+      ..write(obj.startBattery)
+      ..writeByte(3)
+      ..write(obj.endBattery)
+      ..writeByte(4)
+      ..write(obj.startRange)
+      ..writeByte(5)
+      ..write(obj.endRange)
+      ..writeByte(6)
+      ..write(obj.odometerStart)
+      ..writeByte(7)
+      ..write(obj.odometerEnd)
+      ..writeByte(8)
+      ..write(obj.efficiencyScore)
+      ..writeByte(9)
+      ..write(obj.avgOutsideTemp);
+  }
+
+  @override
+  int get hashCode => typeId.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is DriveSessionAdapter &&
+          runtimeType == other.runtimeType &&
+          typeId == other.typeId;
+}
+
+class LocalVehicleInfoAdapter extends TypeAdapter<LocalVehicleInfo> {
+  @override
+  final int typeId = 6;
+
+  @override
+  LocalVehicleInfo read(BinaryReader reader) {
+    final numOfFields = reader.readByte();
+    final fields = <int, dynamic>{
+      for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
+    };
+    return LocalVehicleInfo(
+      firmwareVersion: fields[0] as String,
+      odometer: fields[1] as double,
+      tireFL: fields[2] as double,
+      tireFR: fields[3] as double,
+      tireRL: fields[4] as double,
+      tireRR: fields[5] as double,
+      lastUpdated: fields[6] as DateTime,
+    );
+  }
+
+  @override
+  void write(BinaryWriter writer, LocalVehicleInfo obj) {
+    writer
+      ..writeByte(7)
+      ..writeByte(0)
+      ..write(obj.firmwareVersion)
+      ..writeByte(1)
+      ..write(obj.odometer)
+      ..writeByte(2)
+      ..write(obj.tireFL)
+      ..writeByte(3)
+      ..write(obj.tireFR)
+      ..writeByte(4)
+      ..write(obj.tireRL)
+      ..writeByte(5)
+      ..write(obj.tireRR)
+      ..writeByte(6)
+      ..write(obj.lastUpdated);
+  }
+
+  @override
+  int get hashCode => typeId.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is LocalVehicleInfoAdapter &&
+          runtimeType == other.runtimeType &&
+          typeId == other.typeId;
+}
+
+class VehicleCacheAdapter extends TypeAdapter<VehicleCache> {
+  @override
+  final int typeId = 8;
+
+  @override
+  VehicleCache read(BinaryReader reader) {
+    final numOfFields = reader.readByte();
+    final fields = <int, dynamic>{
+      for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
+    };
+    return VehicleCache(
+      vin: fields[0] as String,
+      batteryCapacityKwh: fields[1] as double?,
+      originalRangeRating: fields[2] as double?,
+      warrantyExpiryDate: fields[3] as DateTime?,
+      warrantyMilesRemaining: fields[4] as double?,
+      batteryType: fields[5] as String?,
+      motorCount: fields[6] as int?,
+      options: (fields[7] as List?)?.cast<String>(),
+    );
+  }
+
+  @override
+  void write(BinaryWriter writer, VehicleCache obj) {
+    writer
+      ..writeByte(8)
+      ..writeByte(0)
+      ..write(obj.vin)
+      ..writeByte(1)
+      ..write(obj.batteryCapacityKwh)
+      ..writeByte(2)
+      ..write(obj.originalRangeRating)
+      ..writeByte(3)
+      ..write(obj.warrantyExpiryDate)
+      ..writeByte(4)
+      ..write(obj.warrantyMilesRemaining)
+      ..writeByte(5)
+      ..write(obj.batteryType)
+      ..writeByte(6)
+      ..write(obj.motorCount)
+      ..writeByte(7)
+      ..write(obj.options);
+  }
+
+  @override
+  int get hashCode => typeId.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is VehicleCacheAdapter &&
+          runtimeType == other.runtimeType &&
+          typeId == other.typeId;
+}
+
+class UserPrefsAdapter extends TypeAdapter<UserPrefs> {
+  @override
+  final int typeId = 9;
+
+  @override
+  UserPrefs read(BinaryReader reader) {
+    final numOfFields = reader.readByte();
+    final fields = <int, dynamic>{
+      for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
+    };
+    return UserPrefs(
+      electricityRatePerKwh: fields[0] as double?,
+      notificationsEnabled: fields[1] as bool?,
+      preferredTheme: fields[2] as String?,
+    );
+  }
+
+  @override
+  void write(BinaryWriter writer, UserPrefs obj) {
+    writer
+      ..writeByte(3)
+      ..writeByte(0)
+      ..write(obj.electricityRatePerKwh)
+      ..writeByte(1)
+      ..write(obj.notificationsEnabled)
+      ..writeByte(2)
+      ..write(obj.preferredTheme);
+  }
+
+  @override
+  int get hashCode => typeId.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is UserPrefsAdapter &&
+          runtimeType == other.runtimeType &&
+          typeId == other.typeId;
+}
+
 // **************************************************************************
 // JsonSerializableGenerator
 // **************************************************************************
@@ -142,6 +509,9 @@ TeslaVehicleData _$TeslaVehicleDataFromJson(Map<String, dynamic> json) =>
       driveState: json['drive_state'] == null
           ? null
           : DriveState.fromJson(json['drive_state'] as Map<String, dynamic>),
+      guiSettings: json['gui_settings'] == null
+          ? null
+          : GuiSettings.fromJson(json['gui_settings'] as Map<String, dynamic>),
     );
 
 Map<String, dynamic> _$TeslaVehicleDataToJson(TeslaVehicleData instance) =>
@@ -150,6 +520,26 @@ Map<String, dynamic> _$TeslaVehicleDataToJson(TeslaVehicleData instance) =>
       'climate_state': instance.climateState,
       'vehicle_state': instance.vehicleState,
       'drive_state': instance.driveState,
+      'gui_settings': instance.guiSettings,
+    };
+
+GuiSettings _$GuiSettingsFromJson(Map<String, dynamic> json) => GuiSettings(
+      distanceUnits: json['gui_distance_units'] as String?,
+      temperatureUnits: json['gui_temperature_units'] as String?,
+      pressureUnits: json['gui_tire_pressure_units'] as String?,
+      chargeRateUnits: json['gui_charge_rate_units'] as String?,
+      is24HourTime: json['gui_24_hour_time'] as bool?,
+      showRangeUnits: json['show_range_units'] as bool?,
+    );
+
+Map<String, dynamic> _$GuiSettingsToJson(GuiSettings instance) =>
+    <String, dynamic>{
+      'gui_distance_units': instance.distanceUnits,
+      'gui_temperature_units': instance.temperatureUnits,
+      'gui_tire_pressure_units': instance.pressureUnits,
+      'gui_charge_rate_units': instance.chargeRateUnits,
+      'gui_24_hour_time': instance.is24HourTime,
+      'show_range_units': instance.showRangeUnits,
     };
 
 ChargeState _$ChargeStateFromJson(Map<String, dynamic> json) => ChargeState(
@@ -474,4 +864,128 @@ Map<String, dynamic> _$TeslaProductToJson(TeslaProduct instance) =>
       'id': instance.id,
       'vehicle_id': instance.vehicleId,
       'vin': instance.vin,
+    };
+
+BatterySnapshot _$BatterySnapshotFromJson(Map<String, dynamic> json) =>
+    BatterySnapshot(
+      timestamp: DateTime.parse(json['timestamp'] as String),
+      batteryLevel: (json['batteryLevel'] as num).toInt(),
+      batteryRange: (json['batteryRange'] as num).toDouble(),
+      idealBatteryRange: (json['idealBatteryRange'] as num).toDouble(),
+      outsideTemp: (json['outsideTemp'] as num).toDouble(),
+      batteryHeaterOn: json['batteryHeaterOn'] as bool,
+      chargeLimitSoc: (json['chargeLimitSoc'] as num).toInt(),
+      shiftState: json['shiftState'] as String,
+      odometer: (json['odometer'] as num).toDouble(),
+    );
+
+Map<String, dynamic> _$BatterySnapshotToJson(BatterySnapshot instance) =>
+    <String, dynamic>{
+      'timestamp': instance.timestamp.toIso8601String(),
+      'batteryLevel': instance.batteryLevel,
+      'batteryRange': instance.batteryRange,
+      'idealBatteryRange': instance.idealBatteryRange,
+      'outsideTemp': instance.outsideTemp,
+      'batteryHeaterOn': instance.batteryHeaterOn,
+      'chargeLimitSoc': instance.chargeLimitSoc,
+      'shiftState': instance.shiftState,
+      'odometer': instance.odometer,
+    };
+
+ChargeSession _$ChargeSessionFromJson(Map<String, dynamic> json) =>
+    ChargeSession(
+      timestamp: DateTime.parse(json['timestamp'] as String),
+      energyAddedKwh: (json['energyAddedKwh'] as num).toDouble(),
+      cost: (json['cost'] as num).toDouble(),
+      duration: _durationFromJson((json['duration'] as num).toInt()),
+      startBattery: (json['startBattery'] as num).toInt(),
+      endBattery: (json['endBattery'] as num).toInt(),
+      location: json['location'] as String?,
+    );
+
+Map<String, dynamic> _$ChargeSessionToJson(ChargeSession instance) =>
+    <String, dynamic>{
+      'timestamp': instance.timestamp.toIso8601String(),
+      'energyAddedKwh': instance.energyAddedKwh,
+      'cost': instance.cost,
+      'duration': _durationToJson(instance.duration),
+      'startBattery': instance.startBattery,
+      'endBattery': instance.endBattery,
+      'location': instance.location,
+    };
+
+DriveSession _$DriveSessionFromJson(Map<String, dynamic> json) => DriveSession(
+      startTime: DateTime.parse(json['startTime'] as String),
+      endTime: DateTime.parse(json['endTime'] as String),
+      startBattery: (json['startBattery'] as num).toInt(),
+      endBattery: (json['endBattery'] as num).toInt(),
+      startRange: (json['startRange'] as num).toDouble(),
+      endRange: (json['endRange'] as num).toDouble(),
+      odometerStart: (json['odometerStart'] as num).toDouble(),
+      odometerEnd: (json['odometerEnd'] as num).toDouble(),
+      efficiencyScore: (json['efficiencyScore'] as num).toDouble(),
+      avgOutsideTemp: (json['avgOutsideTemp'] as num).toDouble(),
+    );
+
+Map<String, dynamic> _$DriveSessionToJson(DriveSession instance) =>
+    <String, dynamic>{
+      'startTime': instance.startTime.toIso8601String(),
+      'endTime': instance.endTime.toIso8601String(),
+      'startBattery': instance.startBattery,
+      'endBattery': instance.endBattery,
+      'startRange': instance.startRange,
+      'endRange': instance.endRange,
+      'odometerStart': instance.odometerStart,
+      'odometerEnd': instance.odometerEnd,
+      'efficiencyScore': instance.efficiencyScore,
+      'avgOutsideTemp': instance.avgOutsideTemp,
+    };
+
+LocalVehicleInfo _$LocalVehicleInfoFromJson(Map<String, dynamic> json) =>
+    LocalVehicleInfo(
+      firmwareVersion: json['firmwareVersion'] as String,
+      odometer: (json['odometer'] as num).toDouble(),
+      tireFL: (json['tireFL'] as num).toDouble(),
+      tireFR: (json['tireFR'] as num).toDouble(),
+      tireRL: (json['tireRL'] as num).toDouble(),
+      tireRR: (json['tireRR'] as num).toDouble(),
+      lastUpdated: DateTime.parse(json['lastUpdated'] as String),
+    );
+
+Map<String, dynamic> _$LocalVehicleInfoToJson(LocalVehicleInfo instance) =>
+    <String, dynamic>{
+      'firmwareVersion': instance.firmwareVersion,
+      'odometer': instance.odometer,
+      'tireFL': instance.tireFL,
+      'tireFR': instance.tireFR,
+      'tireRL': instance.tireRL,
+      'tireRR': instance.tireRR,
+      'lastUpdated': instance.lastUpdated.toIso8601String(),
+    };
+
+VehicleCache _$VehicleCacheFromJson(Map<String, dynamic> json) => VehicleCache(
+      vin: json['vin'] as String,
+      batteryCapacityKwh: (json['batteryCapacityKwh'] as num?)?.toDouble(),
+      originalRangeRating: (json['originalRangeRating'] as num?)?.toDouble(),
+      warrantyExpiryDate: json['warrantyExpiryDate'] == null
+          ? null
+          : DateTime.parse(json['warrantyExpiryDate'] as String),
+      warrantyMilesRemaining:
+          (json['warrantyMilesRemaining'] as num?)?.toDouble(),
+      batteryType: json['batteryType'] as String?,
+      motorCount: (json['motorCount'] as num?)?.toInt(),
+      options:
+          (json['options'] as List<dynamic>?)?.map((e) => e as String).toList(),
+    );
+
+Map<String, dynamic> _$VehicleCacheToJson(VehicleCache instance) =>
+    <String, dynamic>{
+      'vin': instance.vin,
+      'batteryCapacityKwh': instance.batteryCapacityKwh,
+      'originalRangeRating': instance.originalRangeRating,
+      'warrantyExpiryDate': instance.warrantyExpiryDate?.toIso8601String(),
+      'warrantyMilesRemaining': instance.warrantyMilesRemaining,
+      'batteryType': instance.batteryType,
+      'motorCount': instance.motorCount,
+      'options': instance.options,
     };

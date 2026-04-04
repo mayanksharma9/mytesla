@@ -137,6 +137,13 @@ class FetchHistory extends VehicleEvent {
   List<Object?> get props => [vin];
 }
 
+class FetchSpecs extends VehicleEvent {
+  final String vin;
+  const FetchSpecs(this.vin);
+  @override
+  List<Object?> get props => [vin];
+}
+
 // States
 enum VehicleStatus { initial, loading, success, error, commandInProgress }
 
@@ -159,6 +166,8 @@ class VehicleState extends Equatable {
     this.chargingHistory = const [],
     this.error,
     this.loadingCommands = const {},
+    this.vehicleCache,
+    this.suggestions = const [],
   });
 
   @override
@@ -169,7 +178,9 @@ class VehicleState extends Equatable {
     selectedVehicle, 
     batteryHistory, 
     chargingHistory, 
-    error
+    error,
+    vehicleCache,
+    suggestions,
   ];
 
   VehicleState copyWith({
@@ -191,8 +202,13 @@ class VehicleState extends Equatable {
       chargingHistory: chargingHistory ?? this.chargingHistory,
       error: error ?? this.error,
       loadingCommands: loadingCommands ?? this.loadingCommands,
+      vehicleCache: vehicleCache ?? this.vehicleCache,
+      suggestions: suggestions ?? this.suggestions,
     );
   }
+  
+  final VehicleCache? vehicleCache;
+  final List<SmartSuggestion> suggestions;
 }
 
 // Bloc
@@ -200,14 +216,23 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleState> {
   final VehicleRepository _repository;
   final ChargingRepository _chargingRepository;
   final FirebaseFirestore _firestore;
+  final TelemetryPollingService _pollingService;
+  final IntelligenceEngine _intelligenceEngine;
   Timer? _pollingTimer;
 
-  VehicleBloc(this._repository, this._chargingRepository, this._firestore) : super(const VehicleState()) {
+  VehicleBloc(
+    this._repository, 
+    this._chargingRepository, 
+    this._firestore,
+    this._pollingService,
+    this._intelligenceEngine,
+  ) : super(const VehicleState()) {
     on<FetchVehicles>(_onFetchVehicles);
     on<StartPolling>(_onStartPolling);
     on<StopPolling>(_onStopPolling);
     on<SelectVehicle>(_onSelectVehicle);
     on<FetchHistory>(_onFetchHistory);
+    on<FetchSpecs>(_onFetchSpecs); // New event
     // ... existing handlers ...
     on<ToggleLock>(_onToggleLock);
     on<ActuateTrunk>(_onActuateTrunk);
@@ -225,20 +250,13 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleState> {
   }
 
   void _onStartPolling(StartPolling event, Emitter<VehicleState> emit) {
-    _pollingTimer?.cancel();
-    
-    // Fetch immediately
-    add(FetchVehicles());
-    
-    // Then every 5 minutes
-    _pollingTimer = Timer.periodic(const Duration(minutes: 5), (_) {
-      add(FetchVehicles());
-    });
+    if (state.selectedVehicle != null) {
+      _pollingService.startPolling(state.selectedVehicle!.id);
+    }
   }
 
   void _onStopPolling(StopPolling event, Emitter<VehicleState> emit) {
-    _pollingTimer?.cancel();
-    _pollingTimer = null;
+    _pollingService.stopPolling();
   }
 
   @override
@@ -330,6 +348,16 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleState> {
         batteryHistory: batteryHistory,
         chargingHistory: chargingHistory,
       ));
+
+      // NEW: Generate suggestions based on updated history
+      if (state.selectedVehicle != null) {
+        final suggestions = _intelligenceEngine.generateSuggestions(
+          vehicle: state.selectedVehicle!,
+          history: batteryHistory,
+          cache: state.vehicleCache,
+        );
+        emit(state.copyWith(suggestions: suggestions));
+      }
       
       print('VehicleBloc: Fetched history for ${event.vin} (${batteryHistory.length} battery, ${chargingHistory.length} charging)');
     } catch (e) {
@@ -572,6 +600,18 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleState> {
       emit(state.copyWith(
         loadingCommands: Set.from(state.loadingCommands)..remove(cmdId),
       ));
+    }
+  }
+
+  Future<void> _onFetchSpecs(FetchSpecs event, Emitter<VehicleState> emit) async {
+    try {
+      final specs = await _repository.getVehicleSpecs(event.vin);
+      emit(state.copyWith(vehicleCache: specs));
+      
+      // Also sync warranty in background
+      _repository.syncWarranty(event.vin);
+    } catch (e) {
+      print('VehicleBloc: Failed to fetch specs: $e');
     }
   }
 }
