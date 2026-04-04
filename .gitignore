@@ -48,8 +48,16 @@ token_resp.json
 partner_resp.json
 tesla_register_result.json
 domain.json
+tesla_private_key.pem
+com.tesla.3p.pk
+com.tesla.3p.public-key.pem
+*.txt
+*.pem
+*.key
 *.json.token
 pub_get_log.txt
+/functions/node_modules/
+/proxy_backend/.env
 *.iml
 .flutter-plugins-dependencies
 .metadata
