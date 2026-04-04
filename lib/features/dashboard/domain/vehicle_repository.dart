@@ -25,6 +25,10 @@ abstract class VehicleRepository {
   Future<void> flashLights(String vehicleId);
   Future<void> honkHorn(String vehicleId);
   
+  // Security
+  Future<void> setSentryMode(String vehicleId, bool on);
+  Future<void> setValetMode(String vehicleId, bool on, {String? password});
+  
   // Power & Energy
   Future<List<TeslaProduct>> getProducts();
 }

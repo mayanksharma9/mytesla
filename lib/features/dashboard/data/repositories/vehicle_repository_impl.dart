@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:dio/dio.dart';
 import '../../domain/vehicle.dart';
 import '../../domain/vehicle_repository.dart';
@@ -8,8 +8,9 @@ import '../models/tesla_models.dart';
 
 class VehicleRepositoryImpl implements VehicleRepository {
   final TeslaApiClient _apiClient;
+  final FirebaseFirestore _firestore;
 
-  VehicleRepositoryImpl(this._apiClient);
+  VehicleRepositoryImpl(this._apiClient, this._firestore);
 
   @override
   Future<List<Vehicle>> getVehicles() async {
@@ -28,7 +29,12 @@ class VehicleRepositoryImpl implements VehicleRepository {
       final vehiclesResponse = await _apiClient.getVehicles();
       
       final teslaVehicle = vehiclesResponse.response.firstWhere((v) => v.id == vehicleId);
-      return _mapTeslaVehicleDataToDomain(teslaVehicle, dataResponse.response);
+      final vehicle = _mapTeslaVehicleDataToDomain(teslaVehicle, dataResponse.response);
+
+      // Sync to Firestore for persistence and analytics
+      _syncToFirestore(vehicle);
+
+      return vehicle;
     } on DioException catch (e) {
       if (e.response?.statusCode == 408) {
         await _apiClient.wakeUp(vehicleId);
@@ -36,6 +42,34 @@ class VehicleRepositoryImpl implements VehicleRepository {
         return getVehicleData(vehicleId);
       }
       rethrow;
+    }
+  }
+
+  Future<void> _syncToFirestore(Vehicle vehicle) async {
+    try {
+      final vin = vehicle.vin;
+      // 1. Update Latest State
+      await _firestore.collection('vehicles').doc(vin).set({
+        ...vehicle.toJson(),
+        'last_sync': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      // 2. Add Telemetry Snapshot for trends
+      await _firestore.collection('vehicles').doc(vin).collection('telemetry_history').add({
+        'timestamp': FieldValue.serverTimestamp(),
+        'battery_level': vehicle.batteryLevel,
+        'battery_range': vehicle.batteryRange,
+        'odometer': vehicle.odometer,
+        'outside_temp': vehicle.outsideTemp,
+        'inside_temp': vehicle.insideTemp,
+        'shift_state': vehicle.shiftState,
+        'is_locked': vehicle.isLocked,
+        'is_climate_on': vehicle.isClimateOn,
+      });
+
+      print('VehicleRepository: Synced $vin to Firestore');
+    } catch (e) {
+      print('VehicleRepository: Firestore sync failed: $e');
     }
   }
 
@@ -88,6 +122,14 @@ class VehicleRepositoryImpl implements VehicleRepository {
   @override
   Future<void> honkHorn(String vehicleId) async => 
       _executeWithWakeUp(vehicleId, () => _apiClient.honkHorn(vehicleId));
+
+  @override
+  Future<void> setSentryMode(String vehicleId, bool on) async => 
+      _executeWithWakeUp(vehicleId, () => _apiClient.setSentryMode(vehicleId, on));
+
+  @override
+  Future<void> setValetMode(String vehicleId, bool on, {String? password}) async => 
+      _executeWithWakeUp(vehicleId, () => _apiClient.setValetMode(vehicleId, on, password: password));
 
   @override
   Future<List<domain.TeslaProduct>> getProducts() async {
@@ -164,6 +206,14 @@ class VehicleRepositoryImpl implements VehicleRepository {
         outsideTemp: 0,
         insideTemp: 0,
         odometer: 0,
+        isLocked: true,
+        isClimateOn: false,
+        isSentryModeOn: false,
+        isValetModeOn: false,
+        batteryHeaterOn: false,
+        chargeLimitSoc: 80,
+        frontTrunkState: 0,
+        rearTrunkState: 0,
       );
     } catch (e) {
       print('Error mapping basic vehicle: $e');
@@ -182,92 +232,34 @@ class VehicleRepositoryImpl implements VehicleRepository {
         optionCodes: tesla.optionCodes,
         color: tesla.color,
         state: tesla.state,
-        batteryLevel: data.chargeState.batteryLevel,
-        batteryRange: data.chargeState.batteryRange,
-        outsideTemp: data.climateState.outsideTemp,
-        insideTemp: data.climateState.insideTemp,
-        odometer: data.vehicleState.odometer,
-        isLocked: data.vehicleState.locked,
-        isClimateOn: data.climateState.isClimateOn,
-        isSentryModeOn: data.vehicleState.sentryMode ?? false,
-        isValetModeOn: data.vehicleState.valetMode,
-        frontTrunkState: data.vehicleState.ft ?? 0,
-        rearTrunkState: data.vehicleState.rt ?? 0,
+        batteryLevel: data.chargeState?.batteryLevel ?? 0,
+        batteryRange: data.chargeState?.batteryRange ?? 0.0,
+        idealBatteryRange: data.chargeState?.idealBatteryRange ?? 0.0,
+        outsideTemp: data.climateState?.outsideTemp ?? 0.0,
+        insideTemp: data.climateState?.insideTemp ?? 0.0,
+        odometer: data.vehicleState?.odometer ?? 0.0,
+        isLocked: data.vehicleState?.locked ?? true,
+        isClimateOn: data.climateState?.isClimateOn ?? false,
+        isSentryModeOn: data.vehicleState?.sentryMode ?? false,
+        isValetModeOn: data.vehicleState?.valetMode ?? false,
+        batteryHeaterOn: data.climateState?.batteryHeaterOn ?? false,
+        chargeLimitSoc: data.chargeState?.chargeLimitSoc ?? 80,
+        shiftState: data.driveState?.shiftState ?? 'P',
+        frontTrunkState: data.vehicleState?.ft ?? 0,
+        rearTrunkState: data.vehicleState?.rt ?? 0,
+        tpmsPressureFl: data.vehicleState?.tpmsPressureFl,
+        tpmsPressureFr: data.vehicleState?.tpmsPressureFr,
+        tpmsPressureRl: data.vehicleState?.tpmsPressureRl,
+        tpmsPressureRr: data.vehicleState?.tpmsPressureRr,
+        driverTemp: data.climateState?.driverTempSetting,
+        passengerTemp: data.climateState?.passengerTempSetting,
+        useFahrenheit: data.guiSettings?.temperatureUnits == 'F',
+        useMiles: data.guiSettings?.distanceUnits != 'km/hr',
+        pressureUnit: data.guiSettings?.pressureUnits ?? 'Psi',
       );
     } catch (e) {
       print('Error mapping detailed vehicle: $e');
       rethrow;
     }
-  }
-}
-
-class MockVehicleRepository implements VehicleRepository {
-  @override
-  Future<List<Vehicle>> getVehicles() async {
-    await Future.delayed(const Duration(seconds: 1));
-    return [
-      const Vehicle(
-        id: '1',
-        vehicleId: '123456',
-        vin: '5YJ3E1EA0LF000000',
-        displayName: 'Neo',
-        optionCodes: 'MS03',
-        color: 'Midnight Silver',
-        state: 'online',
-        batteryLevel: 84,
-        batteryRange: 268.5,
-        outsideTemp: 42.0,
-        insideTemp: 68.0,
-        odometer: 12450.0,
-        isLocked: true,
-        isSentryModeOn: true,
-      ),
-    ];
-  }
-
-  @override
-  Future<Vehicle> getVehicleData(String vehicleId) async {
-    final vehicles = await getVehicles();
-    return vehicles.firstWhere((v) => v.id == vehicleId);
-  }
-
-  @override
-  Future<void> lock(String vehicleId) async {}
-  @override
-  Future<void> unlock(String vehicleId) async {}
-  @override
-  Future<void> actuateTrunk(String vehicleId, String whichTrunk) async {}
-  @override
-  Future<void> setTemperature(String vehicleId, double temp) async {}
-  @override
-  Future<void> setClimateOn(String vehicleId, bool on) async {}
-  @override
-  Future<void> setSeatHeater(String vehicleId, int heater, int level) async {}
-  @override
-  Future<void> setChargeLimit(String vehicleId, int limit) async {}
-  @override
-  Future<void> startCharging(String vehicleId) async {}
-  @override
-  Future<void> stopCharging(String vehicleId) async {}
-
-  @override
-  Future<void> setChargingAmps(String vehicleId, int amps) async {}
-
-  @override
-  Future<void> flashLights(String vehicleId) async {}
-
-  @override
-  Future<void> honkHorn(String vehicleId) async {}
-
-  @override
-  Future<List<domain.TeslaProduct>> getProducts() async {
-    return [
-      const domain.TeslaProduct(
-        id: '1',
-        siteName: 'Main Residence',
-        type: domain.ProductType.powerwall,
-        energySiteId: '789',
-      ),
-    ];
   }
 }

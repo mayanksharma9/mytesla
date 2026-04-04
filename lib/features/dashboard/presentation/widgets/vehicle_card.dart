@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../domain/vehicle.dart';
 import '../../../../core/theme/volt_colors.dart';
-import 'package:go_router/go_router.dart';
+
 
 class VehicleCard extends StatelessWidget {
   final Vehicle vehicle;
@@ -34,7 +34,7 @@ class VehicleCard extends StatelessWidget {
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.4),
+              color: Colors.black.withOpacity(0.4),
               blurRadius: 20,
               offset: const Offset(0, 4),
             ),
@@ -60,7 +60,7 @@ class VehicleCard extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                       decoration: BoxDecoration(
-                        color: VoltColors.primary.withValues(alpha: 0.2),
+                        color: VoltColors.primary.withOpacity(0.2),
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
@@ -75,11 +75,7 @@ class VehicleCard extends StatelessWidget {
                 ),
                 Row(
                   children: [
-                    IconButton(
-                      icon: const Icon(Icons.settings_input_antenna, color: VoltColors.textTertiaryDark, size: 20),
-                      onPressed: () => context.push('/more/telemetry?vehicleId=${vehicle.id}'),
-                      tooltip: 'Fleet Telemetry',
-                    ),
+
                     Icon(
                       Icons.battery_charging_full,
                       color: vehicle.batteryLevel > 20 ? VoltColors.success : VoltColors.error,

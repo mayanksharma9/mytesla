@@ -55,6 +55,11 @@ class SecurityRepositoryImpl implements SecurityRepository {
 
   @override
   Future<String?> signPayload(String payload) async {
+    return await signBytes(Uint8List.fromList(utf8.encode(payload)));
+  }
+
+  @override
+  Future<String?> signBytes(Uint8List bytes) async {
     final privateKeyB64 = await _storage.read(key: _privateKeyKey);
     if (privateKeyB64 == null) return null;
 
@@ -67,7 +72,7 @@ class SecurityRepositoryImpl implements SecurityRepository {
     final signer = ECDSASigner(SHA256Digest(), HMac(SHA256Digest(), 64));
     signer.init(true, PrivateKeyParameter<ECPrivateKey>(privateKey));
     
-    final signature = signer.generateSignature(Uint8List.fromList(utf8.encode(payload))) as ECSignature;
+    final signature = signer.generateSignature(bytes) as ECSignature;
     
     // Concatenate R and S into exactly 64 bytes (32 for R, 32 for S)
     final rBytes = _encodeBigInt(signature.r);
@@ -89,6 +94,31 @@ class SecurityRepositoryImpl implements SecurityRepository {
   Future<bool> isKeyAsRegistered() async {
     final value = await _storage.read(key: _isRegisteredKey);
     return value == 'true';
+  }
+
+  @override
+  Future<Uint8List?> deriveSharedSecret(Uint8List peerPublicKey) async {
+    final privateKeyB64 = await _storage.read(key: _privateKeyKey);
+    if (privateKeyB64 == null) return null;
+
+    final privateKeyBytes = base64Decode(privateKeyB64);
+    final privateKeyInt = _decodeBigInt(privateKeyBytes);
+    
+    final domain = ECCurve_prime256v1();
+    final privateKey = ECPrivateKey(privateKeyInt, domain);
+    
+    final peerPubKeyPoint = domain.curve.decodePoint(peerPublicKey);
+    final peerPubKey = ECPublicKey(peerPubKeyPoint, domain);
+
+    final ecdh = ECDHBasicAgreement()..init(privateKey);
+    final agreement = ecdh.calculateAgreement(peerPubKey);
+
+    final xBytes = _encodeBigInt(agreement);
+    final paddedX = Uint8List(32)..setRange(32 - xBytes.length, 32, xBytes);
+
+    final digest = SHA1Digest();
+    final sharedKey = digest.process(paddedX);
+    return sharedKey.sublist(0, 16);
   }
 
   // --- Helper Methods ---

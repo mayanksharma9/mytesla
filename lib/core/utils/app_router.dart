@@ -3,18 +3,14 @@ import 'package:go_router/go_router.dart';
 import 'package:voltride/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:voltride/features/auth/presentation/pages/splash_page.dart';
 import 'package:voltride/features/auth/presentation/pages/welcome_page.dart';
-import 'package:voltride/features/auth/presentation/pages/developer_setup_page.dart';
 import 'package:voltride/features/dashboard/presentation/pages/home_page.dart';
 import 'package:voltride/features/dashboard/presentation/pages/vehicle_selector_page.dart';
 import 'package:voltride/features/dashboard/presentation/pages/main_scaffold.dart';
 import 'package:voltride/features/dashboard/presentation/bloc/vehicle_bloc.dart';
-import 'package:voltride/features/controls/presentation/pages/controls_page.dart';
 import 'package:voltride/features/charging/presentation/pages/charging_page.dart';
-import 'package:voltride/features/climate/presentation/pages/climate_page.dart';
-import 'package:voltride/features/settings/presentation/pages/more_page.dart';
-import 'package:voltride/features/charging/presentation/pages/charging_history_page.dart';
+import 'package:voltride/features/battery/presentation/pages/battery_page.dart';
+import 'package:voltride/features/efficiency/presentation/pages/efficiency_page.dart';
 import 'package:voltride/features/auth/presentation/pages/security_setup_page.dart';
-import 'package:voltride/features/telemetry/presentation/pages/telemetry_setup_page.dart';
 import 'package:voltride/core/utils/injection_container.dart';
 import 'dart:async';
 
@@ -81,11 +77,7 @@ class AppRouter {
         parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) => const WelcomePage(),
       ),
-      GoRoute(
-        path: '/developer-setup',
-        parentNavigatorKey: _rootNavigatorKey,
-        builder: (context, state) => const DeveloperSetupPage(),
-      ),
+
       GoRoute(
         path: '/security',
         parentNavigatorKey: _rootNavigatorKey,
@@ -101,6 +93,7 @@ class AppRouter {
           return MainScaffold(navigationShell: navigationShell);
         },
         branches: [
+          // HOME TAB
           StatefulShellBranch(
             routes: [
               GoRoute(
@@ -109,14 +102,16 @@ class AppRouter {
               ),
             ],
           ),
+          // BATTERY TAB
           StatefulShellBranch(
             routes: [
               GoRoute(
-                path: '/controls',
-                builder: (context, state) => const ControlsPage(),
+                path: '/battery',
+                builder: (context, state) => const BatteryPage(),
               ),
             ],
           ),
+          // CHARGING TAB
           StatefulShellBranch(
             routes: [
               GoRoute(
@@ -125,32 +120,12 @@ class AppRouter {
               ),
             ],
           ),
+          // EFFICIENCY TAB
           StatefulShellBranch(
             routes: [
               GoRoute(
-                path: '/climate',
-                builder: (context, state) => const ClimatePage(),
-              ),
-            ],
-          ),
-          StatefulShellBranch(
-            routes: [
-              GoRoute(
-                path: '/more',
-                builder: (context, state) => const MorePage(),
-                routes: [
-                  GoRoute(
-                    path: 'charging-history',
-                    builder: (context, state) => const ChargingHistoryPage(),
-                  ),
-                  GoRoute(
-                    path: 'telemetry',
-                    builder: (context, state) {
-                      final vehicleId = state.uri.queryParameters['vehicleId'] ?? '';
-                      return TelemetrySetupPage(vehicleId: vehicleId);
-                    },
-                  ),
-                ],
+                path: '/efficiency',
+                builder: (context, state) => const EfficiencyPage(),
               ),
             ],
           ),
@@ -171,15 +146,10 @@ class AppRouter {
 
       // 2. Authenticated state
       if (authState.status == AuthStatus.authenticated) {
-        // Force Security Setup if key not registered
         if (!authState.isVirtualKeyRegistered && state.matchedLocation != '/security') {
           return '/security';
         }
 
-        if (authState.isVirtualKeyRegistered && vehicleState.selectedVehicle == null && state.matchedLocation != '/vehicle-selector') {
-          return '/vehicle-selector';
-        }
-        
         if (isAuthRoute || (authState.isVirtualKeyRegistered && state.matchedLocation == '/security' && state.uri.queryParameters['onboarding'] == 'true')) {
           return '/home';
         }

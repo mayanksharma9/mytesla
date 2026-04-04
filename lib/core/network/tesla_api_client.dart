@@ -4,6 +4,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../features/dashboard/data/models/tesla_models.dart';
 import '../../features/auth/domain/security_repository.dart';
 import 'tesla_config.dart';
+import 'tvcp/tvcp_signer.dart';
 
 class TeslaApiClient {
   final Dio _dio;
@@ -99,25 +100,41 @@ class TeslaApiClient {
   }
 
   Future<void> _ensureOnline(String vehicleId) async {
-    final response = await getVehicles();
-    final vehicle = response.response.firstWhere((v) => v.id == vehicleId);
-    if (vehicle.state != 'online') {
-      debugPrint('TeslaApiClient: Vehicle is ${vehicle.state}, waking up...');
-      await wakeUp(vehicleId);
+    int attempts = 0;
+    while (attempts < 6) {
+      final response = await getVehicles();
+      final vehicle = response.response.firstWhere((v) => v.id == vehicleId);
+      if (vehicle.state == 'online') {
+        if (attempts > 0) debugPrint('TeslaApiClient: Vehicle is now online.');
+        return;
+      }
+      
+      debugPrint('TeslaApiClient: Vehicle is ${vehicle.state}, waking up (attempt ${attempts + 1})...');
+      if (attempts == 0) {
+        await wakeUp(vehicleId); // Only send the wake up command once
+      }
       await Future.delayed(const Duration(seconds: 5));
+      attempts++;
     }
+    debugPrint('TeslaApiClient: Vehicle failed to wake up after $attempts attempts.');
   }
 
   // --- Vehicle Metadata ---
 
   Future<TeslaVehicleResponse> getVehicles() async {
     final response = await _dio.get('/api/1/vehicles');
-    return TeslaVehicleResponse.fromJson(response.data);
+    if (response.data == null) {
+      throw Exception('TeslaApiClient: getVehicles returned null data');
+    }
+    return TeslaVehicleResponse.fromJson(response.data as Map<String, dynamic>);
   }
 
   Future<TeslaVehicleDataResponse> getVehicleData(String vehicleId) async {
     final response = await _dio.get('/api/1/vehicles/$vehicleId/vehicle_data');
-    return TeslaVehicleDataResponse.fromJson(response.data);
+    if (response.data == null || response.data['response'] == null) {
+      throw Exception('TeslaApiClient: getVehicleData returned null or empty response');
+    }
+    return TeslaVehicleDataResponse.fromJson(response.data as Map<String, dynamic>);
   }
 
   Future<Response> wakeUp(String vehicleId) async {
@@ -126,21 +143,87 @@ class TeslaApiClient {
 
   // --- Signed Commands (Security & Access) ---
 
+  final Map<String, TVCPSigner> _tvcpSigners = {};
+
+  TVCPSigner _getSignerForVehicle(String vin) {
+    if (!_tvcpSigners.containsKey(vin)) {
+      _tvcpSigners[vin] = TVCPSigner(_securityRepository, vin);
+    }
+    return _tvcpSigners[vin]!;
+  }
+
   Future<Response> _postSignedCommand(String vehicleId, String command, Map<String, dynamic> data) async {
-    // THIS IS A STUB for the new Virtual Key / Signed Command protocol.
-    // In a full implementation, we would wrap the command in a Protobuf 'SignedMessage'
-    // and sign it using the SecurityRepository.
-    
-    // For now, we fall back to the standard API if possible, or 
-    // provide the baseline for signed commands.
-    
-    try {
-      // Logic for signing would go here...
-    } catch (e) {
-      debugPrint('TeslaApiClient: Error signing command: $e');
+    // 1. Fetch Vehicle to get VIN (required for signed_command endpoints)
+    final vehiclesDoc = await getVehicles();
+    final vehicle = vehiclesDoc.response.firstWhere((v) => v.id.toString() == vehicleId);
+    final vin = vehicle.vin;
+
+    // Check if we should use the new TVCP proxy
+    if (command == 'door_lock' || command == 'door_unlock') {
+      int proxyAttempts = 0;
+      while (proxyAttempts < 5) {
+        try {
+          debugPrint('TeslaApiClient: Proxying TVCP command $command on VIN $vin (attempt ${proxyAttempts + 1})');
+          
+          final token = await _storage.read(key: 'access_token');
+          final proxyUrl = TeslaConfig.proxyUrl;
+
+          // POST to our new backend proxy!
+          final response = await _dio.post(
+            '$proxyUrl/api/command/$vin/$command',
+            data: data,
+            options: Options(
+              headers: {
+                'Authorization': 'Bearer $token',
+              },
+            ),
+          );
+          
+          debugPrint('TeslaApiClient: Proxy Command $command response: ${response.statusCode} - ${response.data}');
+          return response;
+        } catch (e) {
+          if (e is DioException) {
+            debugPrint('TeslaApiClient: Proxy signing/sending failed: ${e.response?.statusCode} - ${e.response?.data}');
+            
+            // Check if it's the specific offline error
+            final errorData = e.response?.data;
+            if (e.response?.statusCode == 403 && errorData is Map && errorData['error'] == 'vehicle is offline') {
+              proxyAttempts++;
+              if (proxyAttempts >= 5) rethrow; // Give up
+              debugPrint('TeslaApiClient: Vehicle reported offline by proxy. Sending explicit wakeUp and retrying...');
+              try {
+                await wakeUp(vehicleId);
+              } catch (_) {} // Ignore wakeUp errors
+              await Future.delayed(const Duration(seconds: 4));
+              continue;
+            }
+            
+            // If the proxy actually responded with another error from Tesla, do NOT fall back
+            if (e.response != null) {
+              rethrow;
+            }
+          } else {
+            debugPrint('TeslaApiClient: Proxy signing/sending failed: $e');
+          }
+          // Fall back to standard API if proxy couldn't be reached
+          break; // Exit loop
+        }
+      }
     }
 
-    return await _dio.post('/api/1/vehicles/$vehicleId/command/$command', data: data);
+    try {
+      debugPrint('TeslaApiClient: Sending standard command $command to $vehicleId with data: $data');
+      final response = await _dio.post('/api/1/vehicles/$vehicleId/command/$command', data: data);
+      debugPrint('TeslaApiClient: Command $command response: ${response.statusCode} - ${response.data}');
+      return response;
+    } catch (e) {
+      if (e is DioException) {
+        debugPrint('TeslaApiClient: Command $command failed: ${e.response?.statusCode} - ${e.response?.data}');
+      } else {
+        debugPrint('TeslaApiClient: Command $command failed: $e');
+      }
+      rethrow;
+    }
   }
 
   Future<Response> doorLock(String vehicleId) async {
@@ -166,6 +249,20 @@ class TeslaApiClient {
   Future<Response> chargePortDoorClose(String vehicleId) async {
     await _ensureOnline(vehicleId);
     return await _postSignedCommand(vehicleId, 'charge_port_door_close', {});
+  }
+
+  Future<Response> setSentryMode(String vehicleId, bool on) async {
+    await _ensureOnline(vehicleId);
+    return await _postSignedCommand(vehicleId, 'set_sentry_mode', {'on': on});
+  }
+
+  Future<Response> setValetMode(String vehicleId, bool on, {String? password}) async {
+    await _ensureOnline(vehicleId);
+    final data = <String, dynamic>{'on': on};
+    if (password != null && password.isNotEmpty) {
+      data['password'] = password;
+    }
+    return await _postSignedCommand(vehicleId, 'set_valet_mode', data);
   }
 
   // --- Climate Commands ---
@@ -261,19 +358,28 @@ class TeslaApiClient {
 
   Future<UserRegion> getUserRegion() async {
     final response = await _dio.get('/api/1/users/region');
-    return UserRegion.fromJson(response.data['response']);
+    if (response.data == null || response.data['response'] == null) {
+      throw Exception('TeslaApiClient: getUserRegion returned null response');
+    }
+    return UserRegion.fromJson(response.data['response'] as Map<String, dynamic>);
   }
 
   Future<UserProfile> getUserProfile() async {
     final response = await _dio.get('/api/1/users/me');
-    return UserProfile.fromJson(response.data['response']);
+    if (response.data == null || response.data['response'] == null) {
+       throw Exception('TeslaApiClient: getUserProfile returned null response');
+    }
+    return UserProfile.fromJson(response.data['response'] as Map<String, dynamic>);
   }
 
   // --- Charging History ---
 
   Future<ChargingHistoryResponse> getChargingHistory() async {
     final response = await _dio.get('/api/1/dx/charging/history');
-    return ChargingHistoryResponse.fromJson(response.data);
+    if (response.data == null) {
+      throw Exception('TeslaApiClient: getChargingHistory returned null data');
+    }
+    return ChargingHistoryResponse.fromJson(response.data as Map<String, dynamic>);
   }
 
   // --- Products (Vehicles & Energy) ---
@@ -292,5 +398,28 @@ class TeslaApiClient {
       '/api/1/vehicles/$vehicleId/fleet_telemetry_config',
       data: config,
     );
+  }
+
+  Future<void> updateRegion() async {
+    try {
+      // Always call the default global endpoint for region discovery
+      final response = await Dio().get(
+        'https://fleet-api.prd.na.vn.cloud.tesla.com/api/1/users/region',
+        options: Options(
+          headers: {
+            'Authorization': 'Bearer ${await _storage.read(key: 'access_token')}',
+          },
+        ),
+      );
+
+      if (response.statusCode == 200) {
+        final regionUrl = response.data['region_url'] as String;
+        await _storage.write(key: 'tesla_region', value: regionUrl);
+        _dio.options.baseUrl = regionUrl;
+        debugPrint('TeslaApiClient: Region updated to: $regionUrl');
+      }
+    } catch (e) {
+      debugPrint('TeslaApiClient: Failed to update region: $e');
+    }
   }
 }

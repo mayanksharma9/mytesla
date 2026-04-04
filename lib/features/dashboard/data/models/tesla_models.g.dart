@@ -3,32 +3,103 @@
 part of 'tesla_models.dart';
 
 // **************************************************************************
+// TypeAdapterGenerator
+// **************************************************************************
+
+class VehicleStateAdapter extends TypeAdapter<VehicleState> {
+  @override
+  final int typeId = 2;
+
+  @override
+  VehicleState read(BinaryReader reader) {
+    final numOfFields = reader.readByte();
+    final fields = <int, dynamic>{
+      for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
+    };
+    return VehicleState(
+      odometer: fields[0] as double,
+      carVersion: fields[1] as String,
+      locked: fields[2] as bool,
+      sentryMode: fields[3] as bool?,
+      valetMode: fields[4] as bool,
+      ft: fields[5] as int?,
+      rt: fields[6] as int?,
+      tpmsPressureFl: fields[7] as double?,
+      tpmsPressureFr: fields[8] as double?,
+      tpmsPressureRl: fields[9] as double?,
+      tpmsPressureRr: fields[10] as double?,
+    );
+  }
+
+  @override
+  void write(BinaryWriter writer, VehicleState obj) {
+    writer
+      ..writeByte(11)
+      ..writeByte(0)
+      ..write(obj.odometer)
+      ..writeByte(1)
+      ..write(obj.carVersion)
+      ..writeByte(2)
+      ..write(obj.locked)
+      ..writeByte(3)
+      ..write(obj.sentryMode)
+      ..writeByte(4)
+      ..write(obj.valetMode)
+      ..writeByte(5)
+      ..write(obj.ft)
+      ..writeByte(6)
+      ..write(obj.rt)
+      ..writeByte(7)
+      ..write(obj.tpmsPressureFl)
+      ..writeByte(8)
+      ..write(obj.tpmsPressureFr)
+      ..writeByte(9)
+      ..write(obj.tpmsPressureRl)
+      ..writeByte(10)
+      ..write(obj.tpmsPressureRr);
+  }
+
+  @override
+  int get hashCode => typeId.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is VehicleStateAdapter &&
+          runtimeType == other.runtimeType &&
+          typeId == other.typeId;
+}
+
+// **************************************************************************
 // JsonSerializableGenerator
 // **************************************************************************
 
 TeslaVehicleResponse _$TeslaVehicleResponseFromJson(
-  Map<String, dynamic> json,
-) => TeslaVehicleResponse(
-  response: (json['response'] as List<dynamic>)
-      .map((e) => TeslaVehicle.fromJson(e as Map<String, dynamic>))
-      .toList(),
-  count: (json['count'] as num).toInt(),
-);
+        Map<String, dynamic> json) =>
+    TeslaVehicleResponse(
+      response: (json['response'] as List<dynamic>)
+          .map((e) => TeslaVehicle.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      count: (json['count'] as num).toInt(),
+    );
 
 Map<String, dynamic> _$TeslaVehicleResponseToJson(
-  TeslaVehicleResponse instance,
-) => <String, dynamic>{'response': instance.response, 'count': instance.count};
+        TeslaVehicleResponse instance) =>
+    <String, dynamic>{
+      'response': instance.response,
+      'count': instance.count,
+    };
 
 TeslaVehicle _$TeslaVehicleFromJson(Map<String, dynamic> json) => TeslaVehicle(
-  id: _dynamicToString(json['id']),
-  vehicleId: _dynamicToInt(json['vehicle_id']),
-  vin: _dynamicToString(json['vin']),
-  displayName: _dynamicToNullableString(json['display_name']),
-  optionCodes: _dynamicToNullableString(json['option_codes']),
-  color: _dynamicToNullableString(json['color']),
-  state: _dynamicToString(json['state']),
-  inService: json['in_service'] as bool?,
-);
+      id: _dynamicToString(json['id']),
+      vehicleId: _dynamicToInt(json['vehicle_id']),
+      vin: _dynamicToString(json['vin']),
+      displayName: _dynamicToNullableString(json['display_name']),
+      optionCodes: _dynamicToNullableString(json['option_codes']),
+      color: _dynamicToNullableString(json['color']),
+      state: _dynamicToString(json['state']),
+      inService: json['in_service'] as bool?,
+    );
 
 Map<String, dynamic> _$TeslaVehicleToJson(TeslaVehicle instance) =>
     <String, dynamic>{
@@ -43,29 +114,34 @@ Map<String, dynamic> _$TeslaVehicleToJson(TeslaVehicle instance) =>
     };
 
 TeslaVehicleDataResponse _$TeslaVehicleDataResponseFromJson(
-  Map<String, dynamic> json,
-) => TeslaVehicleDataResponse(
-  response: TeslaVehicleData.fromJson(json['response'] as Map<String, dynamic>),
-);
+        Map<String, dynamic> json) =>
+    TeslaVehicleDataResponse(
+      response:
+          TeslaVehicleData.fromJson(json['response'] as Map<String, dynamic>),
+    );
 
 Map<String, dynamic> _$TeslaVehicleDataResponseToJson(
-  TeslaVehicleDataResponse instance,
-) => <String, dynamic>{'response': instance.response};
+        TeslaVehicleDataResponse instance) =>
+    <String, dynamic>{
+      'response': instance.response,
+    };
 
 TeslaVehicleData _$TeslaVehicleDataFromJson(Map<String, dynamic> json) =>
     TeslaVehicleData(
-      chargeState: ChargeState.fromJson(
-        json['charge_state'] as Map<String, dynamic>,
-      ),
-      climateState: ClimateState.fromJson(
-        json['climate_state'] as Map<String, dynamic>,
-      ),
-      vehicleState: VehicleState.fromJson(
-        json['vehicle_state'] as Map<String, dynamic>,
-      ),
-      driveState: DriveState.fromJson(
-        json['drive_state'] as Map<String, dynamic>,
-      ),
+      chargeState: json['charge_state'] == null
+          ? null
+          : ChargeState.fromJson(json['charge_state'] as Map<String, dynamic>),
+      climateState: json['climate_state'] == null
+          ? null
+          : ClimateState.fromJson(
+              json['climate_state'] as Map<String, dynamic>),
+      vehicleState: json['vehicle_state'] == null
+          ? null
+          : VehicleState.fromJson(
+              json['vehicle_state'] as Map<String, dynamic>),
+      driveState: json['drive_state'] == null
+          ? null
+          : DriveState.fromJson(json['drive_state'] as Map<String, dynamic>),
     );
 
 Map<String, dynamic> _$TeslaVehicleDataToJson(TeslaVehicleData instance) =>
@@ -77,29 +153,34 @@ Map<String, dynamic> _$TeslaVehicleDataToJson(TeslaVehicleData instance) =>
     };
 
 ChargeState _$ChargeStateFromJson(Map<String, dynamic> json) => ChargeState(
-  batteryLevel: _dynamicToInt(json['battery_level']),
-  batteryRange: _dynamicToDouble(json['battery_range']),
-  chargeLimitSoc: _dynamicToInt(json['charge_limit_soc']),
-  chargeCurrentRequest: _dynamicToInt(json['charge_current_request']),
-  chargingState: _dynamicToString(json['charging_state']),
-);
+      batteryLevel: _dynamicToInt(json['battery_level']),
+      batteryRange: _dynamicToDouble(json['battery_range']),
+      idealBatteryRange: json['ideal_battery_range'] == null
+          ? 0.0
+          : _dynamicToDouble(json['ideal_battery_range']),
+      chargeLimitSoc: _dynamicToInt(json['charge_limit_soc']),
+      chargeCurrentRequest: _dynamicToInt(json['charge_current_request']),
+      chargingState: _dynamicToString(json['charging_state']),
+    );
 
 Map<String, dynamic> _$ChargeStateToJson(ChargeState instance) =>
     <String, dynamic>{
       'battery_level': instance.batteryLevel,
       'battery_range': instance.batteryRange,
+      'ideal_battery_range': instance.idealBatteryRange,
       'charge_limit_soc': instance.chargeLimitSoc,
       'charge_current_request': instance.chargeCurrentRequest,
       'charging_state': instance.chargingState,
     };
 
 ClimateState _$ClimateStateFromJson(Map<String, dynamic> json) => ClimateState(
-  insideTemp: _dynamicToDouble(json['inside_temp']),
-  outsideTemp: _dynamicToDouble(json['outside_temp']),
-  driverTempSetting: _dynamicToDouble(json['driver_temp_setting']),
-  passengerTempSetting: _dynamicToDouble(json['passenger_temp_setting']),
-  isClimateOn: json['is_climate_on'] as bool,
-);
+      insideTemp: _dynamicToDouble(json['inside_temp']),
+      outsideTemp: _dynamicToDouble(json['outside_temp']),
+      driverTempSetting: _dynamicToDouble(json['driver_temp_setting']),
+      passengerTempSetting: _dynamicToDouble(json['passenger_temp_setting']),
+      isClimateOn: json['is_climate_on'] as bool,
+      batteryHeaterOn: json['battery_heater_on'] as bool? ?? false,
+    );
 
 Map<String, dynamic> _$ClimateStateToJson(ClimateState instance) =>
     <String, dynamic>{
@@ -108,17 +189,22 @@ Map<String, dynamic> _$ClimateStateToJson(ClimateState instance) =>
       'driver_temp_setting': instance.driverTempSetting,
       'passenger_temp_setting': instance.passengerTempSetting,
       'is_climate_on': instance.isClimateOn,
+      'battery_heater_on': instance.batteryHeaterOn,
     };
 
 VehicleState _$VehicleStateFromJson(Map<String, dynamic> json) => VehicleState(
-  odometer: _dynamicToDouble(json['odometer']),
-  carVersion: _dynamicToString(json['car_version']),
-  locked: json['locked'] as bool,
-  sentryMode: json['sentry_mode'] as bool?,
-  valetMode: json['valet_mode'] as bool,
-  ft: (json['ft'] as num?)?.toInt(),
-  rt: (json['rt'] as num?)?.toInt(),
-);
+      odometer: _dynamicToDouble(json['odometer']),
+      carVersion: _dynamicToString(json['car_version']),
+      locked: json['locked'] as bool,
+      sentryMode: json['sentry_mode'] as bool?,
+      valetMode: json['valet_mode'] as bool,
+      ft: (json['ft'] as num?)?.toInt(),
+      rt: (json['rt'] as num?)?.toInt(),
+      tpmsPressureFl: _dynamicToDouble(json['tpms_pressure_fl']),
+      tpmsPressureFr: _dynamicToDouble(json['tpms_pressure_fr']),
+      tpmsPressureRl: _dynamicToDouble(json['tpms_pressure_rl']),
+      tpmsPressureRr: _dynamicToDouble(json['tpms_pressure_rr']),
+    );
 
 Map<String, dynamic> _$VehicleStateToJson(VehicleState instance) =>
     <String, dynamic>{
@@ -129,19 +215,25 @@ Map<String, dynamic> _$VehicleStateToJson(VehicleState instance) =>
       'valet_mode': instance.valetMode,
       'ft': instance.ft,
       'rt': instance.rt,
+      'tpms_pressure_fl': instance.tpmsPressureFl,
+      'tpms_pressure_fr': instance.tpmsPressureFr,
+      'tpms_pressure_rl': instance.tpmsPressureRl,
+      'tpms_pressure_rr': instance.tpmsPressureRr,
     };
 
 DriveState _$DriveStateFromJson(Map<String, dynamic> json) => DriveState(
-  latitude: _dynamicToDouble(json['latitude']),
-  longitude: _dynamicToDouble(json['longitude']),
-  speed: _dynamicToDouble(json['speed']),
-);
+      latitude: _dynamicToDouble(json['latitude']),
+      longitude: _dynamicToDouble(json['longitude']),
+      speed: _dynamicToDouble(json['speed']),
+      shiftState: _dynamicToNullableString(json['shift_state']),
+    );
 
 Map<String, dynamic> _$DriveStateToJson(DriveState instance) =>
     <String, dynamic>{
       'latitude': instance.latitude,
       'longitude': instance.longitude,
       'speed': instance.speed,
+      'shift_state': instance.shiftState,
     };
 
 ChargingLocation _$ChargingLocationFromJson(Map<String, dynamic> json) =>
@@ -155,8 +247,7 @@ ChargingLocation _$ChargingLocationFromJson(Map<String, dynamic> json) =>
       coordinates: json['coordinates'] == null
           ? null
           : ChargingCoordinates.fromJson(
-              json['coordinates'] as Map<String, dynamic>,
-            ),
+              json['coordinates'] as Map<String, dynamic>),
       evses: (json['evses'] as List<dynamic>?)
           ?.map((e) => EVSE.fromJson(e as Map<String, dynamic>))
           .toList(),
@@ -185,45 +276,45 @@ ChargingCoordinates _$ChargingCoordinatesFromJson(Map<String, dynamic> json) =>
     );
 
 Map<String, dynamic> _$ChargingCoordinatesToJson(
-  ChargingCoordinates instance,
-) => <String, dynamic>{
-  'latitude': instance.latitude,
-  'longitude': instance.longitude,
-};
+        ChargingCoordinates instance) =>
+    <String, dynamic>{
+      'latitude': instance.latitude,
+      'longitude': instance.longitude,
+    };
 
 EVSE _$EVSEFromJson(Map<String, dynamic> json) => EVSE(
-  uid: json['uid'] as String,
-  evseId: json['evse_id'] as String?,
-  status: json['status'] as String,
-  connectors: (json['connectors'] as List<dynamic>?)
-      ?.map((e) => Connector.fromJson(e as Map<String, dynamic>))
-      .toList(),
-);
+      uid: json['uid'] as String,
+      evseId: json['evse_id'] as String?,
+      status: json['status'] as String,
+      connectors: (json['connectors'] as List<dynamic>?)
+          ?.map((e) => Connector.fromJson(e as Map<String, dynamic>))
+          .toList(),
+    );
 
 Map<String, dynamic> _$EVSEToJson(EVSE instance) => <String, dynamic>{
-  'uid': instance.uid,
-  'evse_id': instance.evseId,
-  'status': instance.status,
-  'connectors': instance.connectors,
-};
+      'uid': instance.uid,
+      'evse_id': instance.evseId,
+      'status': instance.status,
+      'connectors': instance.connectors,
+    };
 
 Connector _$ConnectorFromJson(Map<String, dynamic> json) => Connector(
-  id: json['id'] as String,
-  standard: json['standard'] as String,
-  powerType: json['power_type'] as String,
-  maxElectricPower: (json['max_electric_power'] as num).toInt(),
-  tariffIds: (json['tariff_ids'] as List<dynamic>?)
-      ?.map((e) => e as String)
-      .toList(),
-);
+      id: json['id'] as String,
+      standard: json['standard'] as String,
+      powerType: json['power_type'] as String,
+      maxElectricPower: (json['max_electric_power'] as num).toInt(),
+      tariffIds: (json['tariff_ids'] as List<dynamic>?)
+          ?.map((e) => e as String)
+          .toList(),
+    );
 
 Map<String, dynamic> _$ConnectorToJson(Connector instance) => <String, dynamic>{
-  'id': instance.id,
-  'standard': instance.standard,
-  'power_type': instance.powerType,
-  'max_electric_power': instance.maxElectricPower,
-  'tariff_ids': instance.tariffIds,
-};
+      'id': instance.id,
+      'standard': instance.standard,
+      'power_type': instance.powerType,
+      'max_electric_power': instance.maxElectricPower,
+      'tariff_ids': instance.tariffIds,
+    };
 
 ChargingTariff _$ChargingTariffFromJson(Map<String, dynamic> json) =>
     ChargingTariff(
@@ -249,7 +340,9 @@ TariffElement _$TariffElementFromJson(Map<String, dynamic> json) =>
     );
 
 Map<String, dynamic> _$TariffElementToJson(TariffElement instance) =>
-    <String, dynamic>{'price_components': instance.priceComponents};
+    <String, dynamic>{
+      'price_components': instance.priceComponents,
+    };
 
 PriceComponent _$PriceComponentFromJson(Map<String, dynamic> json) =>
     PriceComponent(
@@ -271,12 +364,14 @@ UserRegionResponse _$UserRegionResponseFromJson(Map<String, dynamic> json) =>
     );
 
 Map<String, dynamic> _$UserRegionResponseToJson(UserRegionResponse instance) =>
-    <String, dynamic>{'response': instance.response};
+    <String, dynamic>{
+      'response': instance.response,
+    };
 
 UserRegion _$UserRegionFromJson(Map<String, dynamic> json) => UserRegion(
-  region: json['region'] as String,
-  fleetApiBaseUrl: json['fleet_api_base_url'] as String,
-);
+      region: json['region'] as String,
+      fleetApiBaseUrl: json['fleet_api_base_url'] as String,
+    );
 
 Map<String, dynamic> _$UserRegionToJson(UserRegion instance) =>
     <String, dynamic>{
@@ -290,14 +385,16 @@ UserProfileResponse _$UserProfileResponseFromJson(Map<String, dynamic> json) =>
     );
 
 Map<String, dynamic> _$UserProfileResponseToJson(
-  UserProfileResponse instance,
-) => <String, dynamic>{'response': instance.response};
+        UserProfileResponse instance) =>
+    <String, dynamic>{
+      'response': instance.response,
+    };
 
 UserProfile _$UserProfileFromJson(Map<String, dynamic> json) => UserProfile(
-  fullName: json['full_name'] as String,
-  email: json['email'] as String,
-  profileImageUrl: json['profile_image_url'] as String?,
-);
+      fullName: json['full_name'] as String,
+      email: json['email'] as String,
+      profileImageUrl: json['profile_image_url'] as String?,
+    );
 
 Map<String, dynamic> _$UserProfileToJson(UserProfile instance) =>
     <String, dynamic>{
@@ -307,62 +404,67 @@ Map<String, dynamic> _$UserProfileToJson(UserProfile instance) =>
     };
 
 ChargingHistoryResponse _$ChargingHistoryResponseFromJson(
-  Map<String, dynamic> json,
-) => ChargingHistoryResponse(
-  response:
-      (json['response'] as List<dynamic>?)
-          ?.map((e) => ChargingHistoryEntry.fromJson(e as Map<String, dynamic>))
-          .toList() ??
-      [],
-  count: (json['count'] as num?)?.toInt() ?? 0,
-);
+        Map<String, dynamic> json) =>
+    ChargingHistoryResponse(
+      response: (json['response'] as List<dynamic>?)
+              ?.map((e) =>
+                  ChargingHistoryEntry.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          [],
+      count: (json['count'] as num?)?.toInt() ?? 0,
+    );
 
 Map<String, dynamic> _$ChargingHistoryResponseToJson(
-  ChargingHistoryResponse instance,
-) => <String, dynamic>{'response': instance.response, 'count': instance.count};
+        ChargingHistoryResponse instance) =>
+    <String, dynamic>{
+      'response': instance.response,
+      'count': instance.count,
+    };
 
 ChargingHistoryEntry _$ChargingHistoryEntryFromJson(
-  Map<String, dynamic> json,
-) => ChargingHistoryEntry(
-  chargeStartDateTime: json['charge_start_date_time'] as String?,
-  chargeStopDateTime: json['charge_stop_date_time'] as String?,
-  energyKwh: _dynamicToDouble(json['energy_kwh']),
-  totalCost: _dynamicToDouble(json['total_cost']),
-  vin: json['vin'] as String?,
-  locationId: json['location_id'] as String?,
-);
+        Map<String, dynamic> json) =>
+    ChargingHistoryEntry(
+      chargeStartDateTime: json['charge_start_date_time'] as String?,
+      chargeStopDateTime: json['charge_stop_date_time'] as String?,
+      energyKwh: _dynamicToDouble(json['energy_kwh']),
+      totalCost: _dynamicToDouble(json['total_cost']),
+      vin: json['vin'] as String?,
+      locationId: json['location_id'] as String?,
+    );
 
 Map<String, dynamic> _$ChargingHistoryEntryToJson(
-  ChargingHistoryEntry instance,
-) => <String, dynamic>{
-  'charge_start_date_time': instance.chargeStartDateTime,
-  'charge_stop_date_time': instance.chargeStopDateTime,
-  'energy_kwh': instance.energyKwh,
-  'total_cost': instance.totalCost,
-  'vin': instance.vin,
-  'location_id': instance.locationId,
-};
+        ChargingHistoryEntry instance) =>
+    <String, dynamic>{
+      'charge_start_date_time': instance.chargeStartDateTime,
+      'charge_stop_date_time': instance.chargeStopDateTime,
+      'energy_kwh': instance.energyKwh,
+      'total_cost': instance.totalCost,
+      'vin': instance.vin,
+      'location_id': instance.locationId,
+    };
 
 TeslaProductResponse _$TeslaProductResponseFromJson(
-  Map<String, dynamic> json,
-) => TeslaProductResponse(
-  response: (json['response'] as List<dynamic>)
-      .map((e) => TeslaProduct.fromJson(e as Map<String, dynamic>))
-      .toList(),
-);
+        Map<String, dynamic> json) =>
+    TeslaProductResponse(
+      response: (json['response'] as List<dynamic>)
+          .map((e) => TeslaProduct.fromJson(e as Map<String, dynamic>))
+          .toList(),
+    );
 
 Map<String, dynamic> _$TeslaProductResponseToJson(
-  TeslaProductResponse instance,
-) => <String, dynamic>{'response': instance.response};
+        TeslaProductResponse instance) =>
+    <String, dynamic>{
+      'response': instance.response,
+    };
 
 TeslaProduct _$TeslaProductFromJson(Map<String, dynamic> json) => TeslaProduct(
-  energySiteId: _dynamicToNullableString(json['energy_site_id']),
-  resourceType: json['resource_type'] as String?,
-  siteName: json['site_name'] as String?,
-  id: _dynamicToNullableString(json['id']),
-  vehicleId: _dynamicToInt(json['vehicle_id']),
-  vin: json['vin'] as String?,
-);
+      energySiteId: _dynamicToNullableString(json['energy_site_id']),
+      resourceType: json['resource_type'] as String?,
+      siteName: json['site_name'] as String?,
+      id: _dynamicToNullableString(json['id']),
+      vehicleId: _dynamicToInt(json['vehicle_id']),
+      vin: json['vin'] as String?,
+    );
 
 Map<String, dynamic> _$TeslaProductToJson(TeslaProduct instance) =>
     <String, dynamic>{

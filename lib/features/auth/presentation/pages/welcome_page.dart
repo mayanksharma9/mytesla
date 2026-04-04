@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:go_router/go_router.dart';
 import '../../presentation/bloc/auth_bloc.dart';
 import '../../../../core/theme/volt_colors.dart';
-import '../../../../core/widgets/adaptive/adaptive_button.dart';
 
 class WelcomePage extends StatelessWidget {
   const WelcomePage({super.key});

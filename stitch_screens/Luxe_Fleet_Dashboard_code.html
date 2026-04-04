@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Luxe Mobility | Fleet Dashboard</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "error-container": "#fe8983",
+                        "on-background": "#2d3435",
+                        "primary-fixed-dim": "#c6d6e5",
+                        "tertiary": "#555f78",
+                        "on-surface-variant": "#5a6061",
+                        "tertiary-fixed": "#d5dffe",
+                        "error-dim": "#4e0309",
+                        "inverse-primary": "#daeaf9",
+                        "surface-container": "#ebeeef",
+                        "surface-container-high": "#e4e9ea",
+                        "primary-container": "#d4e4f3",
+                        "on-secondary-fixed": "#403f40",
+                        "on-tertiary-container": "#465069",
+                        "inverse-surface": "#0c0f0f",
+                        "secondary-fixed-dim": "#d6d4d5",
+                        "on-primary-fixed-variant": "#4e5d6a",
+                        "surface-bright": "#f9f9f9",
+                        "on-primary-container": "#445460",
+                        "on-error": "#fff7f6",
+                        "error": "#9f403d",
+                        "on-error-container": "#752121",
+                        "on-surface": "#2d3435",
+                        "secondary-container": "#e5e2e3",
+                        "secondary-dim": "#545354",
+                        "surface-container-lowest": "#ffffff",
+                        "surface": "#f9f9f9",
+                        "on-secondary-container": "#525152",
+                        "outline-variant": "#adb3b4",
+                        "primary": "#51606d",
+                        "on-primary-fixed": "#32414d",
+                        "surface-container-low": "#f2f4f4",
+                        "on-tertiary": "#f9f8ff",
+                        "on-tertiary-fixed-variant": "#4f5973",
+                        "secondary": "#605f60",
+                        "on-secondary-fixed-variant": "#5c5b5c",
+                        "background": "#f9f9f9",
+                        "inverse-on-surface": "#9c9d9d",
+                        "tertiary-fixed-dim": "#c7d1ef",
+                        "on-secondary": "#fbf8f9",
+                        "surface-tint": "#51606d",
+                        "on-tertiary-fixed": "#333d55",
+                        "on-primary": "#f3f8ff",
+                        "surface-container-highest": "#dde4e5",
+                        "outline": "#757c7d",
+                        "tertiary-container": "#d5dffe",
+                        "primary-fixed": "#d4e4f3",
+                        "tertiary-dim": "#49536c",
+                        "primary-dim": "#455460",
+                        "surface-dim": "#d4dbdd",
+                        "surface-variant": "#dde4e5",
+                        "secondary-fixed": "#e5e2e3"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "1rem",
+                        "lg": "2rem",
+                        "xl": "3rem",
+                        "full": "9999px"
+                    },
+                    "fontFamily": {
+                        "headline": ["Manrope"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 200, 'GRAD' 0, 'opsz' 24;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f9f9f9;
+        }
+        .headline-font {
+            font-family: 'Manrope', sans-serif;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-surface text-on-surface min-h-screen pb-32">
+<!-- TopAppBar -->
+<header class="fixed top-0 w-full z-50 bg-slate-50/80 dark:bg-slate-900/80 backdrop-blur-xl shadow-sm dark:shadow-none flex items-center justify-between px-6 py-4">
+<div class="flex items-center gap-4">
+<button class="text-slate-700 dark:text-slate-300 hover:opacity-70 transition-opacity active:scale-95 duration-200">
+<span class="material-symbols-outlined" data-icon="menu">menu</span>
+</button>
+<h1 class="text-slate-900 dark:text-slate-100 font-bold tracking-tighter headline-font text-lg">Luxe Mobility</h1>
+</div>
+<div class="flex items-center gap-4">
+<button class="text-slate-700 dark:text-slate-300 hover:opacity-70 transition-opacity active:scale-95 duration-200">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+</button>
+</div>
+</header>
+<main class="pt-24 px-6 md:px-12 max-w-7xl mx-auto">
+<!-- Fleet Switcher -->
+<section class="mb-12">
+<div class="flex items-center gap-8 overflow-x-auto pb-4 no-scrollbar">
+<div class="flex flex-col items-start min-w-max">
+<span class="text-primary font-bold headline-font text-2xl tracking-tight">Main S</span>
+<span class="w-2 h-2 rounded-full bg-primary mt-1"></span>
+</div>
+<div class="flex flex-col items-start min-w-max opacity-30 hover:opacity-100 transition-opacity cursor-pointer">
+<span class="text-on-surface-variant font-semibold headline-font text-2xl tracking-tight">Roadster 2.0</span>
+<span class="w-2 h-2 rounded-full bg-transparent mt-1"></span>
+</div>
+<div class="flex flex-col items-start min-w-max opacity-30 hover:opacity-100 transition-opacity cursor-pointer">
+<span class="text-on-surface-variant font-semibold headline-font text-2xl tracking-tight">Cyber Truck</span>
+<span class="w-2 h-2 rounded-full bg-transparent mt-1"></span>
+</div>
+</div>
+</section>
+<!-- Hero Centerpiece -->
+<section class="relative mb-16 aspect-[16/9] md:aspect-[21/9] rounded-xl overflow-hidden flex items-center justify-center">
+<img class="absolute inset-0 w-full h-full object-cover" data-alt="front profile of a charcoal metallic luxury electric sedan in a minimalist soft lit concrete studio environment with elegant shadows" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBlqnXoDMi8d7KeXcptsxDwG4PSdzmSc3dTEIC5WYUGtVPIiorWxwvSIC7UQuMPwRbKWUe0LdtWom2oUHZaEn08bCEX0jOAQXx-4X9a2Eh3olNU7RKAaTcPBXAqno6kD2fEj8WHLkVSVGrTW8r4K7cXv1k20uXiD1yT3ucaAtNuDDHaEidG4wwo5QSHKQfKcinzUQjic_9RSLnJXHGguFKCj0Xzs7P1WbG6lwuMIjN40w8auGkOsaqxsRdM9sihYOA4wypVr_K-MW7X"/>
+<div class="absolute inset-0 bg-gradient-to-t from-surface/40 to-transparent"></div>
+<!-- Floating Status Badges -->
+<div class="absolute bottom-8 left-8 flex gap-4">
+<div class="bg-surface-container-lowest/80 backdrop-blur-md px-6 py-4 rounded-lg shadow-sm">
+<p class="text-on-surface-variant text-[11px] font-bold uppercase tracking-widest mb-1">Battery</p>
+<div class="flex items-end gap-1">
+<span class="text-4xl font-extrabold headline-font text-on-surface leading-none">85</span>
+<span class="text-xl font-bold headline-font text-on-surface/60 leading-none mb-1">%</span>
+</div>
+</div>
+<div class="bg-surface-container-lowest/80 backdrop-blur-md px-6 py-4 rounded-lg shadow-sm border border-white/20">
+<p class="text-on-surface-variant text-[11px] font-bold uppercase tracking-widest mb-1">Range</p>
+<div class="flex items-end gap-1">
+<span class="text-4xl font-extrabold headline-font text-on-surface leading-none">342</span>
+<span class="text-xl font-bold headline-font text-on-surface/60 leading-none mb-1">mi</span>
+</div>
+</div>
+</div>
+<!-- Status Orb -->
+<div class="absolute top-8 right-8 flex items-center gap-3 bg-on-background/5 backdrop-blur-md px-4 py-2 rounded-full">
+<div class="relative flex items-center justify-center">
+<div class="w-3 h-3 rounded-full bg-tertiary"></div>
+<div class="absolute inset-0 w-3 h-3 rounded-full bg-tertiary animate-pulse blur-[4px]"></div>
+</div>
+<span class="text-[11px] font-bold text-on-background uppercase tracking-widest">System Ready</span>
+</div>
+</section>
+<!-- Bento Grid Quick Actions & Stats -->
+<div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-8">
+<!-- Quick Actions Grid -->
+<div class="md:col-span-2 grid grid-cols-2 gap-4">
+<button class="group bg-surface-container-lowest p-8 rounded-lg transition-all duration-300 hover:bg-surface-bright flex flex-col justify-between aspect-square">
+<span class="material-symbols-outlined text-primary text-3xl group-active:scale-90 transition-transform" data-icon="lock_open">lock_open</span>
+<div class="text-left">
+<p class="text-on-surface font-bold headline-font text-lg">Doors</p>
+<p class="text-on-surface-variant text-sm">Unlocked</p>
+</div>
+</button>
+<button class="group bg-surface-container-lowest p-8 rounded-lg transition-all duration-300 hover:bg-surface-bright flex flex-col justify-between aspect-square">
+<span class="material-symbols-outlined text-primary text-3xl group-active:scale-90 transition-transform" data-icon="thermostat">thermostat</span>
+<div class="text-left">
+<p class="text-on-surface font-bold headline-font text-lg">Climate</p>
+<p class="text-on-surface-variant text-sm">72° Interior</p>
+</div>
+</button>
+<button class="group bg-surface-container-lowest p-8 rounded-lg transition-all duration-300 hover:bg-surface-bright flex flex-col justify-between aspect-square">
+<span class="material-symbols-outlined text-primary text-3xl group-active:scale-90 transition-transform" data-icon="minor_crash">minor_crash</span>
+<div class="text-left">
+<p class="text-on-surface font-bold headline-font text-lg">Frunk</p>
+<p class="text-on-surface-variant text-sm">Closed</p>
+</div>
+</button>
+<button class="group bg-surface-container-lowest p-8 rounded-lg transition-all duration-300 hover:bg-surface-bright flex flex-col justify-between aspect-square">
+<span class="material-symbols-outlined text-primary text-3xl group-active:scale-90 transition-transform" data-icon="flashlight_on">flashlight_on</span>
+<div class="text-left">
+<p class="text-on-surface font-bold headline-font text-lg">Flash</p>
+<p class="text-on-surface-variant text-sm">Lights Off</p>
+</div>
+</button>
+</div>
+<!-- Vertical Secondary Data -->
+<div class="lg:col-span-2 space-y-4">
+<div class="bg-surface-container-low p-8 rounded-lg flex items-center justify-between">
+<div>
+<p class="text-on-surface-variant text-[11px] font-bold uppercase tracking-widest mb-2">Location</p>
+<p class="text-on-surface font-bold headline-font text-xl">Silver Oak Marina</p>
+<p class="text-on-surface-variant text-sm">Newport Beach, CA</p>
+</div>
+<div class="w-24 h-24 rounded-lg overflow-hidden bg-surface-container">
+<img class="w-full h-full object-cover grayscale opacity-50" data-alt="stylized map view showing luxury marina area with soft teal and charcoal colors" data-location="Newport Beach" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCLUMrhmlzbHM_Q6zJVb9X7ClC_zJU5WdA_5xkpzXNHpvAmbn3K05gMVGO7Y1oB63uvXkuDBUeRXErMVGuObZiljYD5SkuS9EDpSVl5RGEwaT8yCSYmm3PN7C2uuoV7WHwfJAuxIF-ct7BW-pPhQqtoj7NvHXZmwN86uHelMBSgeKjbUCiuhf38UPlCjdGgxBPzmf4h1NFkT6YqD9-CesfzfI9VL9l3W4ccl_AlFiHL3UqvHgtf2JMmqm-iB4sd14rd3O1QfOgeIaKU"/>
+</div>
+</div>
+<div class="grid grid-cols-2 gap-4">
+<div class="bg-surface-container-lowest p-8 rounded-lg">
+<p class="text-on-surface-variant text-[11px] font-bold uppercase tracking-widest mb-4">Tyres</p>
+<div class="flex items-center justify-between">
+<span class="text-2xl font-extrabold headline-font">42</span>
+<span class="text-on-surface-variant text-xs">PSI OK</span>
+</div>
+</div>
+<div class="bg-surface-container-lowest p-8 rounded-lg">
+<p class="text-on-surface-variant text-[11px] font-bold uppercase tracking-widest mb-4">Odometer</p>
+<div class="flex items-center justify-between">
+<span class="text-2xl font-extrabold headline-font">12,402</span>
+<span class="text-on-surface-variant text-xs">MILES</span>
+</div>
+</div>
+</div>
+<div class="bg-primary p-8 rounded-lg text-on-primary flex items-center justify-between group cursor-pointer transition-all duration-300 hover:brightness-110">
+<div>
+<p class="text-on-primary/60 text-[11px] font-bold uppercase tracking-widest mb-1">Next Service</p>
+<p class="font-bold headline-font text-xl">December 14, 2024</p>
+</div>
+<button class="bg-white/10 p-3 rounded-full">
+<span class="material-symbols-outlined" data-icon="arrow_forward">arrow_forward</span>
+</button>
+</div>
+</div>
+</div>
+</main>
+<!-- BottomNavBar -->
+<nav class="fixed bottom-6 left-0 right-0 z-50 flex justify-around items-center px-4">
+<div class="bg-white/90 dark:bg-slate-950/90 backdrop-blur-2xl w-[90%] max-w-md rounded-full border border-slate-200/50 dark:border-slate-800/50 shadow-[0_20px_50px_rgba(0,0,0,0.1)] flex justify-around items-center py-2 px-2">
+<!-- Active Tab: Status -->
+<button class="flex flex-col items-center justify-center bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white rounded-full px-5 py-2 transition-all duration-300 group">
+<span class="material-symbols-outlined text-[20px]" data-icon="electric_car" style="font-variation-settings: 'FILL' 1;">electric_car</span>
+<span class="font-['Inter'] text-[10px] font-bold uppercase tracking-wider mt-1">Status</span>
+</button>
+<!-- Inactive Tab: Drive -->
+<button class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 px-5 py-2 hover:text-slate-600 transition-colors group">
+<span class="material-symbols-outlined text-[20px]" data-icon="explore">explore</span>
+<span class="font-['Inter'] text-[10px] font-semibold uppercase tracking-wider mt-1">Drive</span>
+</button>
+<!-- Inactive Tab: Climate -->
+<button class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 px-5 py-2 hover:text-slate-600 transition-colors group">
+<span class="material-symbols-outlined text-[20px]" data-icon="thermostat">thermostat</span>
+<span class="font-['Inter'] text-[10px] font-semibold uppercase tracking-wider mt-1">Climate</span>
+</button>
+<!-- Inactive Tab: More -->
+<button class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 px-5 py-2 hover:text-slate-600 transition-colors group">
+<span class="material-symbols-outlined text-[20px]" data-icon="more_horiz">more_horiz</span>
+<span class="font-['Inter'] text-[10px] font-semibold uppercase tracking-wider mt-1">More</span>
+</button>
+</div>
+</nav>
+</body></html>

@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "error-container": "#fe8983",
+                    "on-background": "#2d3435",
+                    "primary-fixed-dim": "#c6d6e5",
+                    "tertiary": "#555f78",
+                    "on-surface-variant": "#5a6061",
+                    "tertiary-fixed": "#d5dffe",
+                    "error-dim": "#4e0309",
+                    "inverse-primary": "#daeaf9",
+                    "surface-container": "#ebeeef",
+                    "surface-container-high": "#e4e9ea",
+                    "primary-container": "#d4e4f3",
+                    "on-secondary-fixed": "#403f40",
+                    "on-tertiary-container": "#465069",
+                    "inverse-surface": "#0c0f0f",
+                    "secondary-fixed-dim": "#d6d4d5",
+                    "on-primary-fixed-variant": "#4e5d6a",
+                    "surface-bright": "#f9f9f9",
+                    "on-primary-container": "#445460",
+                    "on-error": "#fff7f6",
+                    "error": "#9f403d",
+                    "on-error-container": "#752121",
+                    "on-surface": "#2d3435",
+                    "secondary-container": "#e5e2e3",
+                    "secondary-dim": "#545354",
+                    "surface-container-lowest": "#ffffff",
+                    "surface": "#f9f9f9",
+                    "on-secondary-container": "#525152",
+                    "outline-variant": "#adb3b4",
+                    "primary": "#51606d",
+                    "on-primary-fixed": "#32414d",
+                    "surface-container-low": "#f2f4f4",
+                    "on-tertiary": "#f9f8ff",
+                    "on-tertiary-fixed-variant": "#4f5973",
+                    "secondary": "#605f60",
+                    "on-secondary-fixed-variant": "#5c5b5c",
+                    "background": "#f9f9f9",
+                    "inverse-on-surface": "#9c9d9d",
+                    "tertiary-fixed-dim": "#c7d1ef",
+                    "on-secondary": "#fbf8f9",
+                    "surface-tint": "#51606d",
+                    "on-tertiary-fixed": "#333d55",
+                    "on-primary": "#f3f8ff",
+                    "surface-container-highest": "#dde4e5",
+                    "outline": "#757c7d",
+                    "tertiary-container": "#d5dffe",
+                    "primary-fixed": "#d4e4f3",
+                    "tertiary-dim": "#49536c",
+                    "primary-dim": "#455460",
+                    "surface-dim": "#d4dbdd",
+                    "surface-variant": "#dde4e5",
+                    "secondary-fixed": "#e5e2e3"
+            },
+            "borderRadius": {
+                    "DEFAULT": "1rem",
+                    "lg": "2rem",
+                    "xl": "3rem",
+                    "full": "9999px"
+            },
+            "fontFamily": {
+                    "headline": ["Manrope"],
+                    "body": ["Inter"],
+                    "label": ["Inter"]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .soft-blur-glow {
+            filter: blur(4px);
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f9f9f9;
+            color: #2d3435;
+        }
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="antialiased select-none">
+<!-- TopAppBar -->
+<header class="fixed top-0 w-full z-50 bg-slate-50/80 dark:bg-slate-900/80 backdrop-blur-xl shadow-sm dark:shadow-none">
+<div class="flex items-center justify-between px-6 py-4 w-full">
+<div class="flex items-center gap-4">
+<button class="text-slate-700 dark:text-slate-300 hover:opacity-70 transition-opacity active:scale-95 duration-200">
+<span class="material-symbols-outlined">menu</span>
+</button>
+<h1 class="font-['Manrope'] font-bold tracking-tight text-lg text-slate-900 dark:text-slate-100">Energy &amp; Charging</h1>
+</div>
+<div class="flex items-center gap-4">
+<button class="text-slate-700 dark:text-slate-300 hover:opacity-70 transition-opacity active:scale-95 duration-200">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+</div>
+</div>
+</header>
+<main class="pt-24 pb-32 px-6 max-w-7xl mx-auto">
+<!-- Bento Layout Start -->
+<div class="grid grid-cols-1 md:grid-cols-12 gap-8 items-start">
+<!-- Left Column: Main Stats -->
+<div class="md:col-span-4 space-y-8">
+<!-- State of Charge Card -->
+<section class="bg-surface-container-lowest rounded-xl p-8 shadow-[0_20px_50px_rgba(0,0,0,0.03)] flex flex-col items-center text-center">
+<span class="font-label text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant mb-6">Current Range</span>
+<div class="relative w-48 h-48 flex items-center justify-center">
+<!-- Sophisticated Ring -->
+<svg class="w-full h-full -rotate-90">
+<circle class="text-surface-container-high" cx="96" cy="96" fill="transparent" r="88" stroke="currentColor" stroke-width="6"></circle>
+<circle class="text-primary" cx="96" cy="96" fill="transparent" r="88" stroke="currentColor" stroke-dasharray="552.92" stroke-dashoffset="99.5" stroke-linecap="round" stroke-width="10"></circle>
+</svg>
+<div class="absolute inset-0 flex flex-col items-center justify-center">
+<span class="font-headline font-extrabold text-6xl tracking-tighter text-on-surface">82%</span>
+<span class="font-label text-sm font-medium text-on-surface-variant">312 mi</span>
+</div>
+</div>
+<div class="mt-8 flex items-center gap-2">
+<div class="w-3 h-3 bg-tertiary rounded-full soft-blur-glow"></div>
+<span class="text-sm font-semibold text-on-surface">Parked &amp; Calibrating</span>
+</div>
+</section>
+<!-- Battery Health Index -->
+<section class="bg-surface-container-lowest rounded-xl p-8 shadow-[0_20px_50px_rgba(0,0,0,0.03)]">
+<div class="flex justify-between items-center mb-6">
+<span class="font-label text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant">Battery Health</span>
+<span class="material-symbols-outlined text-primary text-xl">verified_user</span>
+</div>
+<div class="flex items-end gap-3 mb-2">
+<h2 class="font-headline font-bold text-4xl text-on-surface">98%</h2>
+<span class="font-body text-sm text-primary font-medium mb-1.5">+0.2% vs avg</span>
+</div>
+<div class="w-full h-1 bg-surface-container-high rounded-full mt-4 overflow-hidden">
+<div class="w-[98%] h-full bg-primary transition-all duration-1000"></div>
+</div>
+<p class="mt-4 text-xs font-body text-on-surface-variant leading-relaxed">Your battery degradation is significantly lower than average for this mileage.</p>
+</section>
+</div>
+<!-- Right Column: Graphs & Logs -->
+<div class="md:col-span-8 space-y-8">
+<!-- Charging Curve Section -->
+<section class="bg-surface-container-lowest rounded-xl p-8 shadow-[0_20px_50px_rgba(0,0,0,0.03)] relative overflow-hidden min-h-[340px]">
+<div class="flex justify-between items-center mb-8">
+<div>
+<span class="font-label text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant">Last Session Curve</span>
+<h3 class="font-headline font-bold text-2xl text-on-surface">Supercharging V3</h3>
+</div>
+<div class="text-right">
+<span class="font-headline font-bold text-xl text-primary">250 kW</span>
+<p class="text-xs text-on-surface-variant">Peak Velocity</p>
+</div>
+</div>
+<!-- Graph Placeholder (Pure CSS/HTML Styling) -->
+<div class="relative h-48 w-full flex items-end justify-between px-2">
+<!-- Soft Background Gradient -->
+<div class="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-primary/5 to-transparent rounded-lg"></div>
+<!-- Visualizing the Curve with Pill bars -->
+<div class="w-[4%] bg-primary/20 h-12 rounded-full"></div>
+<div class="w-[4%] bg-primary/30 h-20 rounded-full"></div>
+<div class="w-[4%] bg-primary/40 h-32 rounded-full"></div>
+<div class="w-[4%] bg-primary/60 h-40 rounded-full"></div>
+<div class="w-[4%] bg-primary h-44 rounded-full"></div>
+<div class="w-[4%] bg-primary h-48 rounded-full"></div>
+<div class="w-[4%] bg-primary h-46 rounded-full"></div>
+<div class="w-[4%] bg-primary/80 h-38 rounded-full"></div>
+<div class="w-[4%] bg-primary/60 h-32 rounded-full"></div>
+<div class="w-[4%] bg-primary/40 h-28 rounded-full"></div>
+<div class="w-[4%] bg-primary/30 h-24 rounded-full"></div>
+<div class="w-[4%] bg-primary/20 h-20 rounded-full"></div>
+<div class="w-[4%] bg-primary/10 h-16 rounded-full"></div>
+<!-- Floating Data Tooltip -->
+<div class="absolute top-0 left-[42%] -translate-x-1/2 bg-white px-3 py-1.5 rounded-full shadow-lg border border-slate-50 flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-primary"></span>
+<span class="text-xs font-bold text-on-surface">Peak @ 42% SoC</span>
+</div>
+</div>
+<div class="flex justify-between mt-6 px-2 text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">
+<span>0%</span>
+<span>25%</span>
+<span>50%</span>
+<span>75%</span>
+<span>100%</span>
+</div>
+</section>
+<!-- Efficiency Logs -->
+<section class="space-y-4">
+<div class="flex justify-between items-center mb-6">
+<h4 class="font-headline font-bold text-xl text-on-surface">Efficiency Logs</h4>
+<button class="text-primary text-xs font-bold uppercase tracking-widest">View All</button>
+</div>
+<div class="grid grid-cols-1 gap-4">
+<!-- Commute Log -->
+<div class="bg-surface-container-low rounded-lg p-6 flex items-center justify-between hover:bg-surface-container-lowest transition-colors duration-300">
+<div class="flex items-center gap-6">
+<div class="w-12 h-12 rounded-full bg-primary-container flex items-center justify-center">
+<span class="material-symbols-outlined text-on-primary-container">commute</span>
+</div>
+<div>
+<h5 class="font-headline font-bold text-on-surface">Morning Commute</h5>
+<p class="font-body text-xs text-on-surface-variant">24.2 miles • 42 mins</p>
+</div>
+</div>
+<div class="text-right">
+<span class="font-headline font-bold text-lg text-on-surface">242 Wh/mi</span>
+<div class="flex items-center justify-end gap-1 mt-1">
+<span class="material-symbols-outlined text-[14px] text-primary">trending_down</span>
+<span class="text-[10px] font-bold text-primary uppercase">Excellent</span>
+</div>
+</div>
+</div>
+<!-- Long Trip Log -->
+<div class="bg-surface-container-low rounded-lg p-6 flex items-center justify-between hover:bg-surface-container-lowest transition-colors duration-300">
+<div class="flex items-center gap-6">
+<div class="w-12 h-12 rounded-full bg-tertiary-fixed flex items-center justify-center">
+<span class="material-symbols-outlined text-on-tertiary-fixed">terrain</span>
+</div>
+<div>
+<h5 class="font-headline font-bold text-on-surface">Mountain Pass</h5>
+<p class="font-body text-xs text-on-surface-variant">112 miles • 2h 15m</p>
+</div>
+</div>
+<div class="text-right">
+<span class="font-headline font-bold text-lg text-on-surface">310 Wh/mi</span>
+<div class="flex items-center justify-end gap-1 mt-1">
+<span class="material-symbols-outlined text-[14px] text-on-surface-variant">trending_flat</span>
+<span class="text-[10px] font-bold text-on-surface-variant uppercase">Normal</span>
+</div>
+</div>
+</div>
+<!-- Idle Log -->
+<div class="bg-surface-container-low rounded-lg p-6 flex items-center justify-between hover:bg-surface-container-lowest transition-colors duration-300">
+<div class="flex items-center gap-6">
+<div class="w-12 h-12 rounded-full bg-surface-container-high flex items-center justify-center">
+<span class="material-symbols-outlined text-on-surface-variant">mode_night</span>
+</div>
+<div>
+<h5 class="font-headline font-bold text-on-surface">Sentry Standby</h5>
+<p class="font-body text-xs text-on-surface-variant">14 hours • Static</p>
+</div>
+</div>
+<div class="text-right">
+<span class="font-headline font-bold text-lg text-on-surface">1.2 kWh</span>
+<div class="flex items-center justify-end gap-1 mt-1">
+<span class="text-[10px] font-bold text-on-surface-variant uppercase">Phantom Drain</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+</div>
+</div>
+<!-- Decorative Hero Component: Aesthetic Insight -->
+<section class="mt-12 w-full rounded-xl overflow-hidden relative min-h-[300px] flex items-center px-12 group">
+<img class="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" data-alt="Modern high-end electric car interior dashboard at dusk with soft ambient glowing lighting and a focus on minimalist technology" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAP1Jv0djE_vvCiVhjb5iqjzzXPk-hFTfkvE_tvqqy62LWN8H1yqDcG4FK0LWPM7bzXxcIOj8Yqo777WCWiTbzURDdzf-88Rm7IH8qM1UwwP4FZ6RbEQQL9916FqvxtFPOpHDNznzOWiEp3JU1rZ1Yh2ojDktC3S7W9Ir1GV_LrG8hBpf9lSSXoXWU9fu6fSzdI3IT8aEfxiRNG7xtG4kQVJBXBljifgQoC6MFUpH3I1AplwCw7uv2YlBdR6afygPg4_fYDJOBxlzTf"/>
+<div class="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"></div>
+<div class="relative z-10 max-w-lg">
+<span class="font-label text-[11px] font-bold uppercase tracking-[0.2em] text-primary-fixed-dim">Intelligence Preview</span>
+<h2 class="font-headline font-extrabold text-4xl text-white mt-4 leading-tight">Predictive Range based on Weather.</h2>
+<p class="text-slate-200 mt-6 font-body leading-relaxed">Our advanced neural network considers 42 external variables including wind resistance and elevation changes for your next route.</p>
+<button class="mt-8 px-8 py-3 bg-primary text-white font-bold rounded-full text-xs uppercase tracking-widest hover:opacity-90 transition-all">Explore Predictions</button>
+</div>
+</section>
+</main>
+<!-- BottomNavBar -->
+<nav class="fixed bottom-6 left-0 right-0 z-50 flex justify-around items-center px-4">
+<div class="bg-white/90 dark:bg-slate-950/90 backdrop-blur-2xl w-[90%] max-w-md rounded-full border border-slate-200/50 dark:border-slate-800/50 shadow-[0_20px_50px_rgba(0,0,0,0.1)] dark:shadow-none flex justify-around items-center py-3 px-2">
+<a class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 px-5 py-2 hover:text-slate-600 transition-all" href="#">
+<span class="material-symbols-outlined mb-1">electric_car</span>
+<span class="font-['Inter'] text-[11px] font-semibold uppercase tracking-wider">Status</span>
+</a>
+<a class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 px-5 py-2 hover:text-slate-600 transition-all" href="#">
+<span class="material-symbols-outlined mb-1">explore</span>
+<span class="font-['Inter'] text-[11px] font-semibold uppercase tracking-wider">Drive</span>
+</a>
+<a class="flex flex-col items-center justify-center bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white rounded-full px-5 py-2 transition-all duration-300" href="#">
+<span class="material-symbols-outlined mb-1" style="font-variation-settings: 'FILL' 1;">thermostat</span>
+<span class="font-['Inter'] text-[11px] font-semibold uppercase tracking-wider">Climate</span>
+</a>
+<a class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 px-5 py-2 hover:text-slate-600 transition-all" href="#">
+<span class="material-symbols-outlined mb-1">more_horiz</span>
+<span class="font-['Inter'] text-[11px] font-semibold uppercase tracking-wider">More</span>
+</a>
+</div>
+</nav>
+</body></html>

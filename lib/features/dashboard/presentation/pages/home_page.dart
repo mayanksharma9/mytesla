@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:voltride/core/theme/volt_colors.dart';
-import 'package:voltride/features/dashboard/domain/tesla_product.dart';
-import '../bloc/vehicle_bloc.dart';
-import '../widgets/battery_widget.dart';
-import '../widgets/stat_card.dart';
-import '../widgets/status_chip.dart';
+import 'dart:ui';
+import 'dart:math' as math;
+import 'package:voltride/core/utils/injection_container.dart' as di;
+import 'package:voltride/features/dashboard/data/services/telemetry_analytics_service.dart';
+import 'package:voltride/features/dashboard/domain/vehicle.dart';
+import 'package:voltride/features/dashboard/presentation/bloc/vehicle_bloc.dart';
+import 'package:voltride/features/dashboard/data/models/tesla_models.dart' as models;
+import 'package:voltride/core/utils/unit_converter.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -25,10 +28,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    // Don't necessarily stop polling here if we want background updates, 
-    // but for "free tier" it's safer to stop.
-    // However, GoRouter might keep the state alive. 
-    // Let's stop to be safe.
     context.read<VehicleBloc>().add(StopPolling());
     super.dispose();
   }
@@ -44,279 +43,892 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return Scaffold(
-      backgroundColor: VoltColors.backgroundDark,
+      backgroundColor: theme.scaffoldBackgroundColor,
+      extendBodyBehindAppBar: true,
+      appBar: _buildAppBar(context, isDark),
       body: BlocBuilder<VehicleBloc, VehicleState>(
-        builder: (context, vehicleState) {
-          final vehicle = vehicleState.selectedVehicle;
-          if (vehicle == null) {
-            return const Center(child: CircularProgressIndicator(color: VoltColors.primary));
-          }
-
-          return SafeArea(
-            bottom: false,
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(vertical: 20),
+        builder: (context, state) {
+          if (state.status == VehicleStatus.error) {
+            return Center(
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // Top Status Bar
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          (vehicle.displayName ?? 'My Tesla').toUpperCase(),
-                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 2,
-                              ),
-                        ),
-                        Row(
-                          children: [
-                            Container(
-                              width: 8,
-                              height: 8,
-                              decoration: BoxDecoration(
-                                color: vehicle.state == 'online' ? VoltColors.success : VoltColors.textTertiaryDark,
-                                shape: BoxShape.circle,
-                                boxShadow: vehicle.state == 'online'
-                                    ? [
-                                        BoxShadow(
-                                          color: VoltColors.success.withValues(alpha: 0.5),
-                                          blurRadius: 8,
-                                          spreadRadius: 2,
-                                        )
-                                      ]
-                                    : null,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              vehicle.state.toUpperCase(),
-                              style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                                    color: vehicle.state == 'online' ? VoltColors.success : VoltColors.textSecondaryDark,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
+                  const Icon(Icons.error_outline, color: Colors.red, size: 60),
+                  const SizedBox(height: 16),
+                  Text('Failed to sync: ${state.error}', style: const TextStyle(color: Colors.red)),
+                  const SizedBox(height: 24),
+                  FilledButton(
+                    onPressed: () => context.read<VehicleBloc>().add(FetchVehicles()),
+                    child: const Text('RETRY'),
                   ),
-
-                  // Vehicle Hero Image
-                  const SizedBox(height: 20),
-                  Center(
-                    child: Container(
-                      height: 180,
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        gradient: RadialGradient(
-                          colors: [
-                            VoltColors.primary.withValues(alpha: 0.1),
-                            Colors.transparent,
-                          ],
-                          radius: 0.8,
-                        ),
-                      ),
-                      child: Icon(
-                        Icons.directions_car,
-                        size: 140,
-                        color: Colors.white.withValues(alpha: 0.8),
-                      ), // Placeholder for actual car illustration
-                    ),
-                  ),
-
-                  // Battery Widget
-                  Center(
-                    child: BatteryWidget(
-                      level: vehicle.batteryLevel,
-                      range: vehicle.batteryRange,
-                      chargeState: vehicle.state == 'charging' ? 'Charging' : 'Parked',
-                    ),
-                  ),
-
-                  const SizedBox(height: 32),
-
-                  // Quick Stats Row
-                  Padding(
-                    padding: const EdgeInsets.only(left: 24.0),
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: [
-                          StatCard(
-                            icon: Icons.speed,
-                            value: '${vehicle.batteryRange.toInt()}',
-                            label: 'mi range',
-                          ),
-                          StatCard(
-                            icon: Icons.thermostat,
-                            value: '${vehicle.outsideTemp.toInt()}°',
-                            label: 'outside',
-                          ),
-                          StatCard(
-                            icon: Icons.ac_unit,
-                            value: '${vehicle.insideTemp.toInt()}°',
-                            label: 'cabin',
-                          ),
-                          StatCard(
-                            icon: Icons.history,
-                            value: '${(vehicle.odometer / 1000).toStringAsFixed(1)}k',
-                            label: 'miles',
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 40),
-
-                  // Status Chips Selection
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                    child: Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
-                      children: [
-                        QuickStatusChip(
-                          icon: vehicle.isLocked ? Icons.lock : Icons.lock_open,
-                          label: vehicle.isLocked ? 'Locked' : 'Unlocked',
-                          isActive: vehicle.isLocked,
-                          isLoading: vehicleState.loadingCommands.contains('${vehicle.id}_lock'),
-                          onTap: () => context.read<VehicleBloc>().add(ToggleLock(vehicle.id, !vehicle.isLocked)),
-                        ),
-                        QuickStatusChip(
-                          icon: Icons.ac_unit,
-                          label: 'Climate',
-                          isActive: vehicle.isClimateOn,
-                          isLoading: vehicleState.loadingCommands.contains('${vehicle.id}_climate'),
-                          onTap: () => context.read<VehicleBloc>().add(ToggleClimate(vehicle.id, !vehicle.isClimateOn)),
-                        ),
-                        QuickStatusChip(
-                          icon: Icons.bolt,
-                          label: 'Charging',
-                          isActive: vehicle.state == 'charging',
-                          isLoading: vehicleState.loadingCommands.contains('${vehicle.id}_charging'),
-                          onTap: () => context.read<VehicleBloc>().add(ToggleCharging(vehicle.id, vehicle.state != 'charging')),
-                        ),
-                        QuickStatusChip(
-                          icon: Icons.security,
-                          label: 'Sentry',
-                          isActive: vehicle.isSentryModeOn,
-                          onTap: () {}, // Not implemented yet in Repo
-                        ),
-                        QuickStatusChip(
-                          icon: Icons.no_crash,
-                          label: 'Valet',
-                          isActive: vehicle.isValetModeOn,
-                          onTap: () {}, // Not implemented yet in Repo
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  if (vehicleState.products.isNotEmpty) ...[
-                    const SizedBox(height: 48),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                      child: Text(
-                        'POWER & ENERGY',
-                        style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                              color: VoltColors.textTertiaryDark,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 2,
-                            ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      height: 160,
-                      child: ListView.separated(
-                        padding: const EdgeInsets.symmetric(horizontal: 24),
-                        scrollDirection: Axis.horizontal,
-                        itemCount: vehicleState.products.where((p) => p.type != ProductType.vehicle).length,
-                        separatorBuilder: (context, index) => const SizedBox(width: 16),
-                        itemBuilder: (context, index) {
-                          final product = vehicleState.products.where((p) => p.type != ProductType.vehicle).toList()[index];
-                          return _EnergyProductCard(product: product);
-                        },
-                      ),
-                    ),
-                  ],
-
-                  const SizedBox(height: 100), // Bottom padding for navigation
                 ],
               ),
+            );
+          }
+
+          final vehicle = state.selectedVehicle;
+          if (vehicle == null) {
+            if (state.status == VehicleStatus.loading) {
+               return const Center(child: CircularProgressIndicator(color: VoltColors.primary));
+            }
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                   const Icon(Icons.no_crash_outlined, size: 60, color: Colors.grey),
+                   const SizedBox(height: 16),
+                   const Text('No vehicles found in this account.', style: TextStyle(color: Colors.grey)),
+                   const SizedBox(height: 24),
+                   FilledButton(
+                     onPressed: () => context.read<VehicleBloc>().add(FetchVehicles()),
+                     child: const Text('RELOAD'),
+                   ),
+                ],
+              ),
+            );
+          }
+
+          final analytics = di.sl<TelemetryAnalyticsService>();
+
+          return SingleChildScrollView(
+            padding: const EdgeInsets.only(top: 120, left: 24, right: 24, bottom: 140),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildVehicleHeader(vehicle),
+                const SizedBox(height: 24),
+                _buildSuggestionBanner(vehicle),
+                const SizedBox(height: 24),
+                _MainStatusCard(
+                  batteryLevel: vehicle.batteryLevel.toDouble(),
+                  range: vehicle.batteryRange.toInt(),
+                  isCharging: vehicle.state == 'charging',
+                  efficiencyScore: analytics.calculateEfficiencyScoreToday(state.batteryHistory),
+                ),
+                const SizedBox(height: 32),
+                _buildSectionTitle(context, 'DRIVE SUMMARY', 'TODAY'),
+                const SizedBox(height: 16),
+                _statsGrid(vehicle, analytics, state),
+                const SizedBox(height: 32),
+                _buildSectionTitle(context, 'QUICK CONTROLS', 'ACTIVE'),
+                const SizedBox(height: 16),
+                _quickControls(context, state),
+                const SizedBox(height: 40),
+                _buildStatusFooter(vehicle),
+              ],
             ),
           );
         },
       ),
-      bottomNavigationBar: null,
+    );
+  }
+
+  PreferredSizeWidget _buildAppBar(BuildContext context, bool isDark) {
+    return PreferredSize(
+      preferredSize: const Size.fromHeight(72),
+      child: ClipRRect(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+          child: AppBar(
+            backgroundColor: isDark 
+              ? Colors.black.withOpacity(0.4) 
+              : Colors.white.withOpacity(0.6),
+            elevation: 0,
+            title: BlocBuilder<VehicleBloc, VehicleState>(
+              builder: (context, state) {
+                final selectedVehicle = state.selectedVehicle;
+                final allVehicles = state.vehicles;
+
+                return PopupMenuButton<String>(
+                  offset: const Offset(0, 40),
+                  onSelected: (vin) {
+                    context.read<VehicleBloc>().add(SelectVehicle(vin));
+                  },
+                  itemBuilder: (context) => allVehicles.map((v) => PopupMenuItem<String>(
+                    value: v.vin,
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.directions_car_filled,
+                          size: 18,
+                          color: v.vin == selectedVehicle?.vin ? VoltColors.primary : Colors.grey,
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          v.displayName ?? 'Tesla',
+                          style: TextStyle(
+                            color: v.vin == selectedVehicle?.vin ? VoltColors.primary : null,
+                            fontWeight: v.vin == selectedVehicle?.vin ? FontWeight.bold : null,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )).toList(),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: VoltColors.primary.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          children: [
+                            Text(
+                              selectedVehicle?.displayName?.toUpperCase() ?? 'VOLTRIDE',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 2.0,
+                                color: VoltColors.primary,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            const Icon(Icons.keyboard_arrow_down, size: 16, color: VoltColors.primary),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.notifications_none_outlined, size: 20),
+                onPressed: () {},
+              ),
+              const SizedBox(width: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildVehicleHeader(dynamic vehicle) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          vehicle.displayName?.toUpperCase() ?? 'MODEL 3',
+          style: const TextStyle(
+            fontSize: 32,
+            fontWeight: FontWeight.w900,
+            letterSpacing: -1,
+            height: 1,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                color: vehicle.state == 'online' ? Colors.greenAccent : Colors.orangeAccent,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: (vehicle.state == 'online' ? Colors.greenAccent : Colors.orangeAccent).withOpacity(0.4),
+                    blurRadius: 8,
+                    spreadRadius: 2,
+                  )
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              vehicle.state?.toUpperCase() ?? 'DISCONNECTED',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.5,
+                color: Colors.grey.shade500,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSectionTitle(BuildContext context, String title, String badge) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 1.5,
+            color: Colors.grey,
+          ),
+        ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: VoltColors.primary.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Text(
+            badge,
+            style: const TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w900,
+              color: VoltColors.primary,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _statsGrid(Vehicle vehicle, TelemetryAnalyticsService analytics, VehicleState state) {
+    return Row(
+      children: [
+        Expanded(
+          child: _StatTile(
+            label: 'ENERGY',
+            value: analytics.calculateEnergyUsedToday(state.batteryHistory).toStringAsFixed(1),
+            unit: 'kWh',
+            icon: Icons.bolt_outlined,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _StatTile(
+            label: 'DISTANCE',
+            value: UnitConverter.formatDistance(
+              analytics.calculateMilesDrivenToday(state.batteryHistory), 
+              useMiles: vehicle.useMiles
+            ).split(' ')[0],
+            unit: vehicle.useMiles ? 'mi' : 'km',
+            icon: Icons.straighten_outlined,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _StatTile(
+            label: 'VAMP DRAIN',
+            value: analytics.calculateVampireDrain(state.batteryHistory, 24).toStringAsFixed(1),
+            unit: '%',
+            icon: Icons.nights_stay_outlined,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSuggestionBanner(Vehicle vehicle) {
+    String? suggestion;
+    IconData icon = Icons.info_outline;
+    Color color = VoltColors.primary;
+
+    if (vehicle.batteryLevel < 20) {
+        suggestion = 'Battery is low (${vehicle.batteryLevel}%). Nearby superchargers found.';
+        icon = Icons.battery_alert;
+        color = Colors.orangeAccent;
+    } else if (vehicle.tpmsPressureFl != null && (vehicle.tpmsPressureFl! < 31 || vehicle.tpmsPressureFl! > 45)) {
+        final pressureStr = UnitConverter.formatPressure(vehicle.tpmsPressureFl, unit: vehicle.pressureUnit);
+        suggestion = 'Tire pressure is abnormal ($pressureStr). Check tires for safety.';
+        icon = Icons.tire_repair;
+        color = Colors.redAccent;
+    } else if (vehicle.outsideTemp < 7.0 && !vehicle.isClimateOn) {
+        final tempStr = UnitConverter.formatTemperature(vehicle.outsideTemp, useFahrenheit: vehicle.useFahrenheit);
+        suggestion = "It's cold outside ($tempStr). Warm up the cabin for a better drive?";
+        icon = Icons.ac_unit;
+        color = Colors.lightBlueAccent;
+    } else if (vehicle.isClimateOn) {
+        suggestion = 'Climate is currently running. Battery drain: ~3%/hr.';
+        icon = Icons.ac_unit;
+        color = Colors.blueAccent;
+    }
+
+    if (suggestion == null) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withOpacity(0.2)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 20),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              suggestion,
+              style: TextStyle(
+                color: color,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _quickControls(BuildContext context, VehicleState state) {
+    final vehicle = state.selectedVehicle!;
+    final isLocked = vehicle.isLocked;
+    final isClimateOn = vehicle.isClimateOn;
+    final driverTemp = vehicle.driverTemp ?? 21.0;
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Premium Lock Toggle Card
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: VoltColors.primary.withOpacity(0.05),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: VoltColors.primary.withOpacity(0.1)),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                   Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: isLocked ? VoltColors.primary.withOpacity(0.1) : Colors.green.withOpacity(0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      isLocked ? Icons.lock_outline : Icons.lock_open_outlined,
+                      color: isLocked ? VoltColors.primary : Colors.green,
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        isLocked ? 'VEHICLE LOCKED' : 'VEHICLE UNLOCKED',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1,
+                        ),
+                      ),
+                      Text(
+                        isLocked ? 'Tap to unlock' : 'Tap to lock',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey.withOpacity(0.7),
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              Switch.adaptive(
+                value: !isLocked,
+                activeColor: Colors.green,
+                onChanged: (val) {
+                   context.read<VehicleBloc>().add(ToggleLock(vehicle.id, !val));
+                },
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+        
+        // Climate Card with Temperature Slider
+        _buildSectionTitle(context, 'CLIMATE CONTROL', isClimateOn ? 'ACTIVE' : 'OFF'),
+        const SizedBox(height: 16),
+        Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Theme.of(context).brightness == Brightness.dark 
+                ? const Color(0xFF1E1E1E) 
+                : Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.03),
+                blurRadius: 20,
+                offset: const Offset(0, 10),
+              )
+            ],
+          ),
+          child: Column(
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'TARGET TEMP',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1.5,
+                          color: Colors.grey,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        UnitConverter.formatTemperature(driverTemp, useFahrenheit: vehicle.useFahrenheit),
+                        style: const TextStyle(
+                          fontSize: 32,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ],
+                  ),
+                  _ControlCircle(
+                    icon: Icons.power_settings_new,
+                    label: isClimateOn ? 'STOP' : 'START',
+                    isActive: isClimateOn,
+                    onTap: () => context.read<VehicleBloc>().add(ToggleClimate(vehicle.id, !isClimateOn)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              // Temperature Slider Bar
+              Row(
+                children: [
+                  const Icon(Icons.ac_unit, size: 16, color: Colors.blueAccent),
+                  Expanded(
+                    child: SliderTheme(
+                      data: SliderTheme.of(context).copyWith(
+                        trackHeight: 12,
+                        activeTrackColor: Colors.blueAccent,
+                        inactiveTrackColor: Colors.grey.withOpacity(0.1),
+                        thumbColor: Colors.white,
+                        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 10),
+                        overlayColor: Colors.blueAccent.withOpacity(0.2),
+                      ),
+                      child: Slider(
+                        value: driverTemp.clamp(15.0, 28.0),
+                        min: 15.0,
+                        max: 28.0,
+                        divisions: 26, // 0.5 deg steps
+                        onChanged: (val) {
+                          // Note: Visual update only maybe? 
+                          // The Bloc will handle the final commit.
+                        },
+                        onChangeEnd: (val) {
+                           context.read<VehicleBloc>().add(SetTemperature(vehicle.id, val));
+                        },
+                      ),
+                    ),
+                  ),
+                  const Icon(Icons.wb_sunny, size: 16, color: Colors.orangeAccent),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+        
+        // Minor Controls
+        Row(
+          children: [
+            Expanded(
+              child: _ControlCircle(
+                icon: Icons.flash_on_outlined,
+                label: 'FLASH',
+                isActive: false,
+                onTap: () => context.read<VehicleBloc>().add(FlashLights(vehicle.id)),
+              ),
+            ),
+            Expanded(
+              child: _ControlCircle(
+                icon: Icons.campaign_outlined,
+                label: 'HONK',
+                isActive: false,
+                onTap: () => context.read<VehicleBloc>().add(HonkHorn(vehicle.id)),
+              ),
+            ),
+            Expanded(
+              child: _ControlCircle(
+                icon: Icons.minor_crash_outlined,
+                label: 'SENTRY',
+                isActive: vehicle.isSentryModeOn,
+                onTap: () => context.read<VehicleBloc>().add(ToggleSentryMode(vehicle.id, !vehicle.isSentryModeOn)),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStatusFooter(dynamic vehicle) {
+    return Center(
+      child: Column(
+        children: [
+          Text(
+            'LAST UPDATED: JUST NOW',
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.0,
+              color: Colors.grey.withOpacity(0.5),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'ODOMETER: ${UnitConverter.formatDistance(vehicle.odometer, useMiles: vehicle.useMiles, precision: 0).toUpperCase()}',
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.0,
+              color: Colors.grey.withOpacity(0.3),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
-class _EnergyProductCard extends StatelessWidget {
-  final TeslaProduct product;
 
-  const _EnergyProductCard({required this.product});
+class _MainStatusCard extends StatelessWidget {
+  final double batteryLevel;
+  final int range;
+  final bool isCharging;
+  final double efficiencyScore;
+
+  const _MainStatusCard({
+    required this.batteryLevel,
+    required this.range,
+    required this.isCharging,
+    required this.efficiencyScore,
+  });
 
   @override
   Widget build(BuildContext context) {
-    IconData iconData;
-    String name;
-
-    switch (product.type) {
-      case ProductType.powerwall:
-        iconData = Icons.battery_charging_full;
-        name = product.siteName ?? 'Powerwall';
-        break;
-      case ProductType.solar:
-        iconData = Icons.solar_power;
-        name = product.siteName ?? 'Solar';
-        break;
-      default:
-        iconData = Icons.bolt;
-        name = product.siteName ?? 'Energy Site';
-    }
-
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
-      width: 240,
-      padding: const EdgeInsets.all(20),
+      height: 380,
+      width: double.infinity,
       decoration: BoxDecoration(
-        color: VoltColors.surfaceDark,
+        color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
+        borderRadius: BorderRadius.circular(40),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 30,
+            offset: const Offset(0, 15),
+          )
+        ],
+      ),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          // Background Glow
+          Positioned(
+            top: 60,
+            left: 40,
+            right: 40,
+            child: Container(
+              height: 200,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: VoltColors.primary.withOpacity(0.15),
+                    blurRadius: 80,
+                    spreadRadius: 20,
+                  )
+                ],
+              ),
+            ),
+          ),
+
+          // Arc Gauge
+          Positioned.fill(
+            top: 40,
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: SizedBox(
+                width: 280,
+                height: 280,
+                child: CustomPaint(
+                  painter: _ArcPainter(
+                    percentage: batteryLevel / 100,
+                    color: VoltColors.primary,
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          // Vehicle Image (Model 3)
+          Positioned(
+            top: 80,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: Image.network(
+                'https://static-assets.tesla.com/v1/compositor/?model=m3&view=STUD_3QTR&size=1440&bkba=1&options=MDL3,PPSW,PRM31,W39B,MT322&version=v0028d202111111626',
+                height: 180,
+                fit: BoxFit.contain,
+                errorBuilder: (c, e, s) => const Icon(Icons.directions_car, size: 100, color: Colors.grey),
+              ),
+            ),
+          ),
+
+          // SOC Display
+          Positioned(
+            bottom: 40,
+            left: 0,
+            right: 0,
+            child: Column(
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
+                  children: [
+                    Text(
+                      '${batteryLevel.toInt()}',
+                      style: const TextStyle(
+                        fontSize: 64,
+                        fontWeight: FontWeight.w900,
+                        height: 1,
+                      ),
+                    ),
+                    const Text(
+                      '%',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.grey,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${UnitConverter.formatDistance(range.toDouble(), useMiles: vehicle.useMiles, precision: 0).toUpperCase()} ESTIMATED',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 2,
+                    color: Colors.grey.withOpacity(0.8),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Efficiency Score Badge
+          Positioned(
+            top: 30,
+            right: 30,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.greenAccent.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.greenAccent.withOpacity(0.2)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.bolt, color: Colors.greenAccent, size: 14),
+                  const SizedBox(width: 4),
+                  Text(
+                    efficiencyScore.toInt().toString(),
+                    style: const TextStyle(
+                      color: Colors.greenAccent,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ArcPainter extends CustomPainter {
+  final double percentage;
+  final Color color;
+
+  _ArcPainter({required this.percentage, required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = size.width / 2;
+    const startAngle = 0.75 * math.pi;
+    const sweepAngle = 1.5 * math.pi;
+
+    final backgroundPaint = Paint()
+      ..color = Colors.grey.withOpacity(0.1)
+      ..strokeWidth = 12
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+
+    final progressPaint = Paint()
+      ..color = color
+      ..strokeWidth = 12
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+
+    // Draw background track
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius),
+      startAngle,
+      sweepAngle,
+      false,
+      backgroundPaint,
+    );
+
+    // Draw progress
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius),
+      startAngle,
+      sweepAngle * percentage,
+      false,
+      progressPaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+}
+
+class _StatTile extends StatelessWidget {
+  final String label;
+  final String value;
+  final String unit;
+  final IconData icon;
+
+  const _StatTile({
+    required this.label,
+    required this.value,
+    required this.unit,
+    required this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF252525) : Colors.white,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+        border: Border.all(
+          color: isDark ? Colors.white.withOpacity(0.05) : Colors.grey.withOpacity(0.1),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Icon(iconData, color: VoltColors.primary, size: 32),
-              const Icon(Icons.arrow_forward_ios, color: VoltColors.textTertiaryDark, size: 14),
-            ],
-          ),
-          const Spacer(),
+          Icon(icon, size: 20, color: VoltColors.primary),
+          const SizedBox(height: 12),
           Text(
-            name,
+            value,
             style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-              fontSize: 18,
+              fontSize: 20,
+              fontWeight: FontWeight.w900,
             ),
           ),
-          const SizedBox(height: 4),
-          const Text(
-            'Live Status • Online',
+          Text(
+            unit.toUpperCase(),
+            style: const TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+              color: Colors.grey,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            label,
             style: TextStyle(
-              color: VoltColors.success,
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
+              fontSize: 9,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1,
+              color: Colors.grey.withOpacity(0.6),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ControlCircle extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool isActive;
+  final VoidCallback onTap;
+
+  const _ControlCircle({
+    required this.icon,
+    required this.label,
+    required this.isActive,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        children: [
+          Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              color: isActive 
+                ? VoltColors.primary 
+                : (isDark ? const Color(0xFF252525) : Colors.white),
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: isActive 
+                  ? VoltColors.primary 
+                  : (isDark ? Colors.white.withOpacity(0.05) : Colors.grey.withOpacity(0.1)),
+              ),
+              boxShadow: isActive ? [
+                BoxShadow(
+                  color: VoltColors.primary.withOpacity(0.3),
+                  blurRadius: 15,
+                  offset: const Offset(0, 5),
+                )
+              ] : null,
+            ),
+            child: Icon(
+              icon,
+              color: isActive ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
+              size: 28,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1,
+              color: isActive ? VoltColors.primary : Colors.grey,
             ),
           ),
         ],

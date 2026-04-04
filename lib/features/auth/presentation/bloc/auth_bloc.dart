@@ -10,7 +10,6 @@ enum AuthStatus { initial, authenticated, unauthenticated, loading, error }
 class AuthState extends Equatable {
   final AuthStatus status;
   final String? error;
-  final bool isDeveloperConfigured;
   final bool isVirtualKeyRegistered;
  
   final UserProfile? userProfile;
@@ -18,25 +17,22 @@ class AuthState extends Equatable {
   const AuthState({
     this.status = AuthStatus.initial,
     this.error,
-    this.isDeveloperConfigured = false,
     this.isVirtualKeyRegistered = false,
     this.userProfile,
   });
  
   @override
-  List<Object?> get props => [status, error, isDeveloperConfigured, isVirtualKeyRegistered, userProfile];
+  List<Object?> get props => [status, error, isVirtualKeyRegistered, userProfile];
 
   AuthState copyWith({
     AuthStatus? status,
     String? error,
-    bool? isDeveloperConfigured,
     bool? isVirtualKeyRegistered,
     UserProfile? userProfile,
   }) {
     return AuthState(
       status: status ?? this.status,
       error: error ?? this.error,
-      isDeveloperConfigured: isDeveloperConfigured ?? this.isDeveloperConfigured,
       isVirtualKeyRegistered: isVirtualKeyRegistered ?? this.isVirtualKeyRegistered,
       userProfile: userProfile ?? this.userProfile,
     );
@@ -56,23 +52,7 @@ class AppStarted extends AuthEvent {}
 class LoginRequested extends AuthEvent {}
 
 class LogoutRequested extends AuthEvent {}
- 
-class CheckDeveloperCredentials extends AuthEvent {}
- 
-class SaveDeveloperCredentials extends AuthEvent {
-  final String clientId;
-  final String clientSecret;
-  final String region;
- 
-  const SaveDeveloperCredentials({
-    required this.clientId,
-    required this.clientSecret,
-    required this.region,
-  });
- 
-  @override
-  List<Object?> get props => [clientId, clientSecret, region];
-}
+
 
 class ProfileFetched extends AuthEvent {
   final UserProfile profile;
@@ -99,8 +79,6 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     on<AppStarted>(_onAppStarted);
     on<LoginRequested>(_onLoginRequested);
     on<LogoutRequested>(_onLogoutRequested);
-    on<CheckDeveloperCredentials>(_onCheckDeveloperCredentials);
-    on<SaveDeveloperCredentials>(_onSaveDeveloperCredentials);
     on<ProfileFetched>(_onProfileFetched);
     on<ToggleVirtualKeyStatus>(_onToggleVirtualKeyStatus);
   }
@@ -109,11 +87,9 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     print('AuthBloc: AppStarted event received');
     emit(state.copyWith(status: AuthStatus.loading));
     
-    final isConfigured = await _authRepository.hasDeveloperCredentials();
     final isKeyRegistered = await _securityRepository.isKeyAsRegistered();
     
     emit(state.copyWith(
-      isDeveloperConfigured: isConfigured,
       isVirtualKeyRegistered: isKeyRegistered,
     ));
 
@@ -182,25 +158,6 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     emit(state.copyWith(status: AuthStatus.unauthenticated));
   }
 
-  Future<void> _onCheckDeveloperCredentials(
-    CheckDeveloperCredentials event,
-    Emitter<AuthState> emit,
-  ) async {
-    final isConfigured = await _authRepository.hasDeveloperCredentials();
-    emit(state.copyWith(isDeveloperConfigured: isConfigured));
-  }
-
-  Future<void> _onSaveDeveloperCredentials(
-    SaveDeveloperCredentials event,
-    Emitter<AuthState> emit,
-  ) async {
-    emit(state.copyWith(status: AuthStatus.loading));
-    await _authRepository.saveDeveloperCredentials(event.clientId, event.clientSecret, event.region);
-    emit(state.copyWith(
-      status: AuthStatus.initial,
-      isDeveloperConfigured: true,
-    ));
-  }
 
   void _onProfileFetched(ProfileFetched event, Emitter<AuthState> emit) {
     emit(state.copyWith(userProfile: event.profile));

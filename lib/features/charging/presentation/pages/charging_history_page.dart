@@ -23,12 +23,14 @@ class _ChargingHistoryPageState extends State<ChargingHistoryPage> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Scaffold(
-      backgroundColor: VoltColors.backgroundDark,
+      backgroundColor: VoltColors.background,
       appBar: AppBar(
-        title: const Text('Charging History'),
-        backgroundColor: VoltColors.backgroundDark,
+        title: Text('CHARGING HISTORY', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800, letterSpacing: 2)),
+        backgroundColor: Colors.transparent,
         elevation: 0,
+        centerTitle: true,
       ),
       body: FutureBuilder<List<ChargingHistoryEntry>>(
         future: _historyFuture,
@@ -78,16 +80,19 @@ class _HistoryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final start = entry.chargeStartDateTime != null 
         ? DateTime.tryParse(entry.chargeStartDateTime!) 
         : null;
     final dateStr = start != null ? DateFormat('MMM d, yyyy • h:mm a').format(start) : 'Unknown Date';
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: VoltColors.surfaceDark,
-        borderRadius: BorderRadius.circular(20),
+        color: isDark ? VoltColors.surfaceContainer : VoltColors.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(24),
         border: Border.all(color: Colors.white.withOpacity(0.05)),
       ),
       child: Column(
@@ -130,17 +135,16 @@ class _HistoryCard extends StatelessWidget {
                 children: [
                   Text(
                     '${entry.energyKwh.toStringAsFixed(1)} kWh',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
+                    style: theme.textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 20,
                     ),
                   ),
                   Text(
                     entry.locationId ?? 'Tesla Supercharger',
-                    style: const TextStyle(
-                      color: VoltColors.textTertiaryDark,
-                      fontSize: 12,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: VoltColors.onSurfaceVariant,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ],

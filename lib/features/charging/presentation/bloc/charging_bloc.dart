@@ -13,6 +13,8 @@ abstract class ChargingEvent extends Equatable {
 
 class FetchNearbyStations extends ChargingEvent {}
 
+class FetchChargingHistory extends ChargingEvent {}
+
 class SelectStation extends ChargingEvent {
   final ChargingLocation station;
   const SelectStation(this.station);
@@ -24,6 +26,7 @@ class SelectStation extends ChargingEvent {
 // --- State ---
 class ChargingState extends Equatable {
   final List<ChargingLocation> stations;
+  final List<ChargingHistoryEntry> history;
   final ChargingLocation? selectedStation;
   final ChargingTariff? currentTariff;
   final bool isLoading;
@@ -31,6 +34,7 @@ class ChargingState extends Equatable {
 
   const ChargingState({
     this.stations = const [],
+    this.history = const [],
     this.selectedStation,
     this.currentTariff,
     this.isLoading = false,
@@ -39,6 +43,7 @@ class ChargingState extends Equatable {
 
   ChargingState copyWith({
     List<ChargingLocation>? stations,
+    List<ChargingHistoryEntry>? history,
     ChargingLocation? selectedStation,
     ChargingTariff? currentTariff,
     bool? isLoading,
@@ -46,6 +51,7 @@ class ChargingState extends Equatable {
   }) {
     return ChargingState(
       stations: stations ?? this.stations,
+      history: history ?? this.history,
       selectedStation: selectedStation ?? this.selectedStation,
       currentTariff: currentTariff ?? this.currentTariff,
       isLoading: isLoading ?? this.isLoading,
@@ -54,7 +60,7 @@ class ChargingState extends Equatable {
   }
 
   @override
-  List<Object?> get props => [stations, selectedStation, currentTariff, isLoading, error];
+  List<Object?> get props => [stations, history, selectedStation, currentTariff, isLoading, error];
 }
 
 // --- Bloc ---
@@ -63,6 +69,7 @@ class ChargingBloc extends Bloc<ChargingEvent, ChargingState> {
 
   ChargingBloc(this._repository) : super(const ChargingState()) {
     on<FetchNearbyStations>(_onFetchNearbyStations);
+    on<FetchChargingHistory>(_onFetchChargingHistory);
     on<SelectStation>(_onSelectStation);
   }
 
@@ -71,6 +78,16 @@ class ChargingBloc extends Bloc<ChargingEvent, ChargingState> {
     try {
       final stations = await _repository.getChargingLocations();
       emit(state.copyWith(stations: stations, isLoading: false));
+    } catch (e) {
+      emit(state.copyWith(isLoading: false, error: e.toString()));
+    }
+  }
+
+  Future<void> _onFetchChargingHistory(FetchChargingHistory event, Emitter<ChargingState> emit) async {
+    emit(state.copyWith(isLoading: true, error: null));
+    try {
+      final history = await _repository.getChargingHistory();
+      emit(state.copyWith(history: history, isLoading: false));
     } catch (e) {
       emit(state.copyWith(isLoading: false, error: e.toString()));
     }

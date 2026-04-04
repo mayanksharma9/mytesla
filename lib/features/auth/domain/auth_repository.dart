@@ -5,9 +5,7 @@ abstract class AuthRepository {
   Future<void> logout();
   Future<bool> refreshToken();
   Future<String?> getAccessToken();
-  Future<void> saveDeveloperCredentials(String clientId, String clientSecret, String region);
-  Future<bool> hasDeveloperCredentials();
-  Future<Map<String, String?>> getDeveloperCredentials();
+
   Future<UserProfile> getUserProfile();
   Future<List<ChargingHistoryEntry>> getChargingHistory();
 }

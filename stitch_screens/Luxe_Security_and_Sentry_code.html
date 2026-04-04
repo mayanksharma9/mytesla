@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Luxe Mobility - Security &amp; Sentry</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&amp;family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "error-container": "#fe8983",
+                        "on-background": "#2d3435",
+                        "primary-fixed-dim": "#c6d6e5",
+                        "tertiary": "#555f78",
+                        "on-surface-variant": "#5a6061",
+                        "tertiary-fixed": "#d5dffe",
+                        "error-dim": "#4e0309",
+                        "inverse-primary": "#daeaf9",
+                        "surface-container": "#ebeeef",
+                        "surface-container-high": "#e4e9ea",
+                        "primary-container": "#d4e4f3",
+                        "on-secondary-fixed": "#403f40",
+                        "on-tertiary-container": "#465069",
+                        "inverse-surface": "#0c0f0f",
+                        "secondary-fixed-dim": "#d6d4d5",
+                        "on-primary-fixed-variant": "#4e5d6a",
+                        "surface-bright": "#f9f9f9",
+                        "on-primary-container": "#445460",
+                        "on-error": "#fff7f6",
+                        "error": "#9f403d",
+                        "on-error-container": "#752121",
+                        "on-surface": "#2d3435",
+                        "secondary-container": "#e5e2e3",
+                        "secondary-dim": "#545354",
+                        "surface-container-lowest": "#ffffff",
+                        "surface": "#f9f9f9",
+                        "on-secondary-container": "#525152",
+                        "outline-variant": "#adb3b4",
+                        "primary": "#51606d",
+                        "on-primary-fixed": "#32414d",
+                        "surface-container-low": "#f2f4f4",
+                        "on-tertiary": "#f9f8ff",
+                        "on-tertiary-fixed-variant": "#4f5973",
+                        "secondary": "#605f60",
+                        "on-secondary-fixed-variant": "#5c5b5c",
+                        "background": "#f9f9f9",
+                        "inverse-on-surface": "#9c9d9d",
+                        "tertiary-fixed-dim": "#c7d1ef",
+                        "on-secondary": "#fbf8f9",
+                        "surface-tint": "#51606d",
+                        "on-tertiary-fixed": "#333d55",
+                        "on-primary": "#f3f8ff",
+                        "surface-container-highest": "#dde4e5",
+                        "outline": "#757c7d",
+                        "tertiary-container": "#d5dffe",
+                        "primary-fixed": "#d4e4f3",
+                        "tertiary-dim": "#49536c",
+                        "primary-dim": "#455460",
+                        "surface-dim": "#d4dbdd",
+                        "surface-variant": "#dde4e5",
+                        "secondary-fixed": "#e5e2e3"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "1rem",
+                        "lg": "2rem",
+                        "xl": "3rem",
+                        "full": "9999px"
+                    },
+                    "fontFamily": {
+                        "headline": ["Manrope"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+        body {
+            background-color: #f9f9f9;
+            font-family: 'Inter', sans-serif;
+            color: #2d3435;
+            -webkit-font-smoothing: antialiased;
+        }
+        .glass-overlay {
+            background: rgba(249, 249, 249, 0.6);
+            backdrop-filter: blur(20px);
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-surface selection:bg-primary-container selection:text-on-primary-container">
+<!-- TopAppBar -->
+<nav class="fixed top-0 w-full z-50 bg-slate-50/80 backdrop-blur-xl shadow-sm flex items-center justify-between px-6 py-4 w-full">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-slate-700" data-icon="menu">menu</span>
+<span class="text-slate-900 font-bold tracking-tighter font-['Manrope'] text-lg">Luxe Mobility</span>
+</div>
+<div class="flex items-center gap-6">
+<div class="hidden md:flex gap-8 items-center">
+<span class="font-['Manrope'] font-bold tracking-tight text-lg text-slate-500 hover:opacity-70 transition-opacity cursor-pointer">Status</span>
+<span class="font-['Manrope'] font-bold tracking-tight text-lg text-slate-500 hover:opacity-70 transition-opacity cursor-pointer">Drive</span>
+<span class="font-['Manrope'] font-bold tracking-tight text-lg text-slate-500 hover:opacity-70 transition-opacity cursor-pointer">Climate</span>
+<span class="font-['Manrope'] font-bold tracking-tight text-lg text-slate-900 border-b-2 border-primary">More</span>
+</div>
+<span class="material-symbols-outlined text-slate-700" data-icon="notifications">notifications</span>
+</div>
+</nav>
+<main class="pt-24 pb-32 px-6 max-w-7xl mx-auto space-y-10">
+<!-- Header Section -->
+<header class="flex flex-col md:flex-row md:items-end justify-between gap-4">
+<div>
+<span class="text-on-surface-variant font-label text-[11px] font-semibold uppercase tracking-[0.2em] mb-2 block">Surveillance Console</span>
+<h1 class="text-on-surface font-headline text-4xl font-extrabold tracking-tight">Security &amp; Sentry</h1>
+</div>
+<div class="flex items-center gap-3">
+<div class="w-3 h-3 bg-tertiary rounded-full shadow-[0_0_12px_rgba(85,95,120,0.6)] blur-[1px]"></div>
+<span class="text-tertiary font-label text-sm font-semibold uppercase tracking-wider">System Armed</span>
+</div>
+</header>
+<!-- Main Bento Grid -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+<!-- Live Feed View (Primary Action) -->
+<section class="lg:col-span-8 space-y-6">
+<div class="relative aspect-video w-full rounded-xl overflow-hidden bg-surface-container-high group">
+<img alt="Sentry Front View" class="w-full h-full object-cover" data-alt="Cinematic wide angle front car camera view of a high-end modern concrete driveway and minimalist architecture at dusk with soft cool lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDKF7u-oeunWl087g3YWDOHkx3a0wmvsvWb_e5cCshEH6rCLz5tZ6lRHUaVsCf7lVeZuEx_3XzjZy4IdCXuPgOVz9uz4w4tv70-uh6KFv6rZ9HNNiixXqHj7pq2fFG8NBKJsx9x7u0Bk3JFi6oZujE0-2xENB4v3ujiz0vGSs-ZspdbzE-IaLYKS-k_Xr2SCKOeFukEmoV1Fe2Wnl57_iCL29mOC6byIOQqHSOiq2YdHx1UZl0ZGS-D2D120iV2oqPRYW1dQEHU8diQ"/>
+<!-- Overlay Metrics -->
+<div class="absolute inset-0 p-8 flex flex-col justify-between pointer-events-none">
+<div class="flex justify-between items-start">
+<div class="glass-overlay px-4 py-2 rounded-full border border-white/20 flex items-center gap-2">
+<span class="material-symbols-outlined text-xs text-error" data-icon="fiber_manual_record" style="font-variation-settings: 'FILL' 1;">fiber_manual_record</span>
+<span class="text-on-surface font-label text-xs font-bold tracking-widest uppercase">Live • Front Cam</span>
+</div>
+<div class="glass-overlay px-4 py-2 rounded-full border border-white/20">
+<span class="text-on-surface font-headline text-sm font-bold tracking-tight">40.7128° N, 74.0060° W</span>
+</div>
+</div>
+<div class="flex justify-between items-end">
+<div class="glass-overlay px-6 py-4 rounded-lg border border-white/20">
+<span class="block text-on-surface-variant font-label text-[10px] uppercase tracking-widest mb-1">Timestamp</span>
+<span class="text-on-surface font-headline text-xl font-bold">OCT 24 — 14:42:09</span>
+</div>
+<div class="flex gap-2 pointer-events-auto">
+<button class="w-12 h-12 rounded-full bg-white/20 hover:bg-white/40 backdrop-blur-md flex items-center justify-center transition-all">
+<span class="material-symbols-outlined text-white" data-icon="videocam">videocam</span>
+</button>
+<button class="w-12 h-12 rounded-full bg-white/20 hover:bg-white/40 backdrop-blur-md flex items-center justify-center transition-all">
+<span class="material-symbols-outlined text-white" data-icon="fullscreen">fullscreen</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Live Multi-Cam Switcher -->
+<div class="grid grid-cols-4 gap-4">
+<div class="aspect-video rounded-lg overflow-hidden border-2 border-primary ring-4 ring-primary/10 relative cursor-pointer">
+<img class="w-full h-full object-cover" data-alt="Small thumbnail of front car camera view" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDvLCH6FgG31wXbBbBFZEATD4ifHObovSiskKM8wa8Ma1CRWGf6xOgT5nQTVcRI62lbWHqvxvqirBDnVDtFMUD5kPd1hvkEFtrgXIL1gN0X_mCH1GxuEMFO9cSc2yoaemEU7Nlz58i9kMULq1petFblUpLssaZp3NgDoaB8jQmdN9QJgdFiH7ONFU3tl7yAvcNEVteDNsTJ9zf-kZ9NMiJDcOF8cZTMQnY-_7-vQ5cZNpuJNqupiD1BRqPEcAFK35zmGxybAttqQh4w"/>
+<div class="absolute inset-0 bg-primary/20 flex items-center justify-center">
+<span class="text-[10px] text-white font-bold uppercase tracking-tighter">Front</span>
+</div>
+</div>
+<div class="aspect-video rounded-lg overflow-hidden relative cursor-pointer hover:opacity-80 transition-opacity">
+<img class="w-full h-full object-cover" data-alt="Small thumbnail of side car camera view" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBS_5hLsUE-XkmWLmCFosqTd_7WS1q4yZPDaKh_ySTLxyTTwEScOo5xDHjANquiwn1gs_iQcwelu58LHOPuJoEsHm2s62n86OaW5DJ5MorO6xY8g_FfRF_qcrGK2_p2aJWsA635cqhdpoOPHJjlzybdiytO6aojryqQdXvOeJAxzIRXt-xroTa4XA6IFYCKWvkFhM3AFnKARtQJgzwEaT1tLpOGvwQhvEIGha4xGmdrJfrKkIvFLLH-Lhg5lXUtjSKYckQPyvBSd28N"/>
+<div class="absolute inset-0 bg-black/40 flex items-center justify-center">
+<span class="text-[10px] text-white font-bold uppercase tracking-tighter">Left Side</span>
+</div>
+</div>
+<div class="aspect-video rounded-lg overflow-hidden relative cursor-pointer hover:opacity-80 transition-opacity">
+<img class="w-full h-full object-cover" data-alt="Small thumbnail of right side car camera view" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBUZn7MpUjnojR4bxxHzXZ1D4puQOcTwSMnX0oC7GrKlXm2xWUt36Z0ZcpbEOHoo66d0LdFSgW9ozwLLpDUAt10EiJ5y6NPDmXhmpqCPbYhdddd0V7W0uV9tYoRFfW9HVOvYqcHTeCvS46RyGErsAI0aI1G5jefzqUgE6oIK0aLQvOVZ4gwNIavd-NGH6zs_hgKZ3oa0dWJ6RVIe-29AWUO5JTDcMo57WI-VaGN2SvvmuB9df_llzpArRuBNEm1nDEteAs0iw_lE4yS"/>
+<div class="absolute inset-0 bg-black/40 flex items-center justify-center">
+<span class="text-[10px] text-white font-bold uppercase tracking-tighter">Right Side</span>
+</div>
+</div>
+<div class="aspect-video rounded-lg overflow-hidden relative cursor-pointer hover:opacity-80 transition-opacity">
+<img class="w-full h-full object-cover" data-alt="Small thumbnail of rear car camera view" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDAtZYiEmFzkWPyQ4gtjV47jwn42tWHn7nXyCHOBGrbVxUgxLUBGLOZ3Tx5xmrkD8cyHP6G2XkzUjBk7bqvOWp8YfkslHOFysReKM2PfZv-kZngwXhL4K4CWrJE8mtEeF_G_x_PsoQ3CK_UVGC71nqyD2m3UzBKdlGLzGvqqe82-mDj2l2REKCK2WFBPZscE--vxcjWKMDNcslctFAsjgmLGWpS91wF5CfaElr7uVIq9BiLK3sBAE8CXMaDDXhr5JDQuT75N8YlE0LW"/>
+<div class="absolute inset-0 bg-black/40 flex items-center justify-center">
+<span class="text-[10px] text-white font-bold uppercase tracking-tighter">Rear</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Sidebar Content -->
+<aside class="lg:col-span-4 space-y-8">
+<!-- GPS Tracking Card -->
+<div class="bg-surface-container-lowest rounded-lg p-6 space-y-4">
+<div class="flex justify-between items-center">
+<h3 class="text-on-surface font-headline font-bold text-lg">Vehicle Location</h3>
+<span class="text-primary font-label text-xs font-bold uppercase cursor-pointer hover:underline">Expand Map</span>
+</div>
+<div class="relative w-full h-48 rounded-lg overflow-hidden bg-surface-container-high">
+<img alt="Map View" class="w-full h-full object-cover opacity-80 grayscale" data-alt="A clean, minimalist high-contrast monochrome map of a city street grid with a subtle glowing marker" data-location="Manhattan, New York" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDygdbodCbv5JC1srEWxEAjEBFNmO2b0-BIJZvJQXDQ_tAmrgFlWfyD8j0WZKhqUmcHGSjWyEZXjqCUm30P9ACSYrObnYmntMm14H7UTpxc7Hw7f9kmi_KVXkfh4kgJJ_2eoxmgJeCW2jhJ7Mx-7s8GOjmZTEHuBbdLIhR-m87RQAwGWvU-dSrskBdAfTW3rCXxNVbKCUXxDaNRzVBJkcVG4A6Xh_cwEgJUjAhdFSmYvCxj2wtIWLwwwkJawOnIs62tPiZvVaw7GBFP"/>
+<div class="absolute inset-0 flex items-center justify-center">
+<div class="w-10 h-10 bg-primary rounded-full flex items-center justify-center shadow-xl border-4 border-white">
+<span class="material-symbols-outlined text-white text-xl" data-icon="electric_car">electric_car</span>
+</div>
+</div>
+</div>
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-on-surface-variant" data-icon="location_on">location_on</span>
+<p class="text-sm text-on-surface-variant font-body">150 Central Park West, NYC</p>
+</div>
+</div>
+<!-- Recent Sentry Events -->
+<div class="space-y-4">
+<div class="flex justify-between items-center">
+<h3 class="text-on-surface font-headline font-bold text-lg">Recent Events</h3>
+<span class="bg-surface-container-high px-2 py-1 rounded text-[10px] font-bold text-on-surface-variant">4 NEW</span>
+</div>
+<div class="space-y-3 overflow-y-auto max-h-[400px] pr-2">
+<!-- Event Card 1 -->
+<div class="group bg-surface-container-lowest hover:bg-surface-bright transition-all p-4 rounded-lg flex items-center gap-4 cursor-pointer">
+<div class="w-16 h-16 rounded-md overflow-hidden bg-slate-200 shrink-0">
+<img class="w-full h-full object-cover" data-alt="Motion detected thumbnail showing a pedestrian passing by" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDqTPt5Ur3NGmInKSUrSHKBU23isG-MTznu8BLT7KteMGexG7TAAmWUlWKPGz2DnV4olx20m9cIVNkMhuJu-Pt73nW_8RVXBO0011NlW8G5NcX8MN4E801EGiEevDb6xpPBoR9dE0rlfS7tdexXDPfuADSSumX2YxnAOSiNygtMU33EgdPKoAI54Xez1h1LsLRV_qIgGmHD0JOOT9DyhGdhMXq0uYMNfYM8-mriIGZOrp01DrmXUjVNfwJ5mD61XFSUXCXe9yz_2UO7"/>
+</div>
+<div class="flex-1 min-w-0">
+<p class="text-on-surface font-bold text-sm truncate">Motion Detected</p>
+<p class="text-on-surface-variant text-xs font-body">Front Camera • 14:14 PM</p>
+</div>
+<span class="material-symbols-outlined text-slate-300 group-hover:text-primary transition-colors" data-icon="chevron_right">chevron_right</span>
+</div>
+<!-- Event Card 2 -->
+<div class="group bg-surface-container-lowest hover:bg-surface-bright transition-all p-4 rounded-lg flex items-center gap-4 cursor-pointer">
+<div class="w-16 h-16 rounded-md overflow-hidden bg-slate-200 shrink-0 relative">
+<img class="w-full h-full object-cover" data-alt="Security clip thumbnail of a car pulling into a parking spot" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB4k-Ua4VcNwYsa_IU1xRmrm82jrMEsb7zbSRi9bWkEG6iMwJ6S6nnwp8ndGD2eCJLMDsB94Q0ujzg7zTKYkhiETtlrlFTgohSerRQbikotBzBWVpRrGjDWg6N1m234UNc27NBudwdRhtyqM26CsSCueENyBI0jsuz7UWnuwGSWwBx8sAKXLRRMB0JXcNdkjTrMk-IvKTgqGEZvHJIEdzXSf6x95rNuLWPnlU93nn2-RrkQr_DCnarTPO833lSb5AErdLSnwmXON1mx"/>
+<div class="absolute inset-0 bg-error/20 flex items-center justify-center">
+<span class="material-symbols-outlined text-white text-lg" data-icon="warning">warning</span>
+</div>
+</div>
+<div class="flex-1 min-w-0">
+<p class="text-error font-bold text-sm truncate">Sentry Triggered</p>
+<p class="text-on-surface-variant text-xs font-body">Left Side • 11:32 AM</p>
+</div>
+<span class="material-symbols-outlined text-slate-300 group-hover:text-primary transition-colors" data-icon="chevron_right">chevron_right</span>
+</div>
+<!-- Event Card 3 -->
+<div class="group bg-surface-container-lowest hover:bg-surface-bright transition-all p-4 rounded-lg flex items-center gap-4 cursor-pointer">
+<div class="w-16 h-16 rounded-md overflow-hidden bg-slate-200 shrink-0">
+<img class="w-full h-full object-cover" data-alt="Calm street view thumbnail" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC-0ZW7UYwIGErnwrdpOmqMwxg8XtmMm02wDtL7V82M-5lKDM_r2LQ1rMNI1-O6ZgOKlwkUGo2P1Uei3onqWwjmffbi7pcFnkJ2HrmRswhN6hZ33hcrr2WBxwG6ZDFsynsUjdOWYJwbGlxb4mxWXfvnEOQsmw4as4AW18uNq0MWVSfD7zWUTUSPdYcIuldZNm4JUzjBFxs4d9JTZfAt3y5vvQNiDpuH904GzpxZQroTRrie4fgWOLhoF2OPJWd-WaYPqH67qQyWB5HD"/>
+</div>
+<div class="flex-1 min-w-0">
+<p class="text-on-surface font-bold text-sm truncate">Routine Check</p>
+<p class="text-on-surface-variant text-xs font-body">Rear Camera • 09:05 AM</p>
+</div>
+<span class="material-symbols-outlined text-slate-300 group-hover:text-primary transition-colors" data-icon="chevron_right">chevron_right</span>
+</div>
+</div>
+</div>
+</aside>
+</div>
+<!-- Quick Actions Row -->
+<section class="grid grid-cols-1 md:grid-cols-3 gap-6">
+<button class="bg-primary hover:bg-primary-dim text-white rounded-full py-6 px-8 flex items-center justify-center gap-3 transition-all active:scale-95 shadow-lg">
+<span class="material-symbols-outlined" data-icon="lock">lock</span>
+<span class="font-headline font-bold text-lg tracking-tight">Lock Down</span>
+</button>
+<button class="bg-surface-container-lowest hover:bg-surface-bright text-on-surface rounded-full py-6 px-8 flex items-center justify-center gap-3 transition-all active:scale-95 border border-slate-200">
+<span class="material-symbols-outlined text-error" data-icon="notifications_active">notifications_active</span>
+<span class="font-headline font-bold text-lg tracking-tight">Trigger Alarm</span>
+</button>
+<button class="bg-surface-container-lowest hover:bg-surface-bright text-on-surface rounded-full py-6 px-8 flex items-center justify-center gap-3 transition-all active:scale-95 border border-slate-200">
+<span class="material-symbols-outlined text-primary" data-icon="record_voice_over">record_voice_over</span>
+<span class="font-headline font-bold text-lg tracking-tight">Remote Voice</span>
+</button>
+</section>
+</main>
+<!-- BottomNavBar -->
+<nav class="fixed bottom-6 left-0 right-0 z-50 flex justify-around items-center px-4 md:hidden">
+<div class="bg-white/90 backdrop-blur-2xl w-[90%] max-w-md rounded-full border border-slate-200/50 shadow-[0_20px_50px_rgba(0,0,0,0.1)] flex justify-around items-center py-2">
+<div class="flex flex-col items-center justify-center text-slate-400 px-5 py-2 hover:text-slate-600 transition-all cursor-pointer">
+<span class="material-symbols-outlined" data-icon="electric_car">electric_car</span>
+<span class="font-['Inter'] text-[11px] font-semibold uppercase tracking-wider mt-1">Status</span>
+</div>
+<div class="flex flex-col items-center justify-center text-slate-400 px-5 py-2 hover:text-slate-600 transition-all cursor-pointer">
+<span class="material-symbols-outlined" data-icon="explore">explore</span>
+<span class="font-['Inter'] text-[11px] font-semibold uppercase tracking-wider mt-1">Drive</span>
+</div>
+<div class="flex flex-col items-center justify-center text-slate-400 px-5 py-2 hover:text-slate-600 transition-all cursor-pointer">
+<span class="material-symbols-outlined" data-icon="thermostat">thermostat</span>
+<span class="font-['Inter'] text-[11px] font-semibold uppercase tracking-wider mt-1">Climate</span>
+</div>
+<div class="flex flex-col items-center justify-center bg-slate-100 text-slate-900 rounded-full px-5 py-2 transition-all duration-300 scale-95 cursor-pointer">
+<span class="material-symbols-outlined" data-icon="more_horiz">more_horiz</span>
+<span class="font-['Inter'] text-[11px] font-semibold uppercase tracking-wider mt-1">More</span>
+</div>
+</div>
+</nav>
+<!-- Map Custom Pin Stylings & Tooltips -->
+<style>
+        /* Ensuring Material Symbols are crisp */
+        .material-symbols-outlined {
+            font-display: block;
+        }
+
+        /* Customizing the Scrollbar for the Events */
+        ::-webkit-scrollbar {
+            width: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #e4e9ea;
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #adb3b4;
+        }
+    </style>
+</body></html>

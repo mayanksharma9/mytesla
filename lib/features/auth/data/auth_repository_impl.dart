@@ -163,29 +163,6 @@ class AuthRepositoryImpl implements AuthRepository {
   @override
   Future<String?> getAccessToken() => _storage.read(key: 'access_token');
 
-  @override
-  Future<void> saveDeveloperCredentials(String clientId, String clientSecret, String region) async {
-    // This now only updates local overrides if needed, but primarily we use TeslaConfig
-    await _storage.write(key: 'override_client_id', value: clientId);
-    await _storage.write(key: 'override_client_secret', value: clientSecret);
-    await _storage.write(key: _regionKey, value: region);
-  }
-
-  @override
-  Future<bool> hasDeveloperCredentials() async {
-    // In the new flow, we always have credentials via TeslaConfig
-    return TeslaConfig.clientId != 'YOUR_CLIENT_ID';
-  }
-
-  @override
-  Future<Map<String, String?>> getDeveloperCredentials() async {
-    final overrideId = await _storage.read(key: 'override_client_id');
-    return {
-      'clientId': overrideId ?? TeslaConfig.clientId,
-      'clientSecret': '********',
-      'region': await _storage.read(key: _regionKey),
-    };
-  }
 
   @override
   Future<UserProfile> getUserProfile() async {

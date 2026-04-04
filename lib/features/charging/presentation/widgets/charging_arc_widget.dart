@@ -80,7 +80,7 @@ class ChargingArcPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round;
 
     final limitPaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.3)
+      ..color = Colors.white.withOpacity(0.3)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2.0
       ..strokeCap = StrokeCap.square;
@@ -88,7 +88,7 @@ class ChargingArcPainter extends CustomPainter {
     final progressPaint = Paint()
       ..shader = SweepGradient(
         colors: [
-          VoltColors.primary.withValues(alpha: 0.5),
+          VoltColors.primary.withOpacity(0.5),
           VoltColors.primary,
         ],
         startAngle: -pi / 2,

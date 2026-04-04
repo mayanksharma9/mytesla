@@ -25,7 +25,7 @@ class SeatHeaterButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: VoltColors.surfaceDark,
           borderRadius: BorderRadius.circular(16),
-          border: level > 0 ? Border.all(color: VoltColors.primary.withValues(alpha: 0.5)) : null,
+          border: level > 0 ? Border.all(color: VoltColors.primary.withOpacity(0.5)) : null,
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,

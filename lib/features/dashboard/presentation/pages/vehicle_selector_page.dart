@@ -67,7 +67,7 @@ class _VehicleSelectorPageState extends State<VehicleSelectorPage> {
                         child: VehicleCard(
                           vehicle: vehicle,
                           onTap: () {
-                            context.read<VehicleBloc>().add(SelectVehicle(vehicle));
+                            context.read<VehicleBloc>().add(SelectVehicle(vehicle.vin));
                           },
                         ),
                       );
@@ -96,7 +96,7 @@ class _VehicleSelectorPageState extends State<VehicleSelectorPage> {
                   child: AdaptiveButton(
                     onPressed: () {
                       final selected = state.vehicles[_currentPage];
-                      context.read<VehicleBloc>().add(SelectVehicle(selected));
+                      context.read<VehicleBloc>().add(SelectVehicle(selected.vin));
                       context.go('/home');
                     },
                     child: const Text('Select Vehicle', style: TextStyle(fontWeight: FontWeight.bold)),
