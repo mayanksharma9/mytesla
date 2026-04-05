@@ -52,7 +52,7 @@ class ControlsPage extends StatelessWidget {
           ),
         ),
       ),
-      body: BlocBuilder<VehicleBloc, VehicleState>(
+      body: BlocBuilder<VehicleBloc, VehicleBlocState>(
         builder: (context, vehicleState) {
           final vehicle = vehicleState.selectedVehicle;
           if (vehicle == null) {

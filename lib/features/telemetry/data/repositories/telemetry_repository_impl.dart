@@ -1,5 +1,8 @@
 import 'dart:convert';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:voltride/core/network/tesla_api_client.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:voltride/features/dashboard/data/models/tesla_models.dart';
 import '../../domain/repositories/telemetry_repository.dart';
 import '../models/telemetry_models.dart';
 import '../../../auth/domain/security_repository.dart';
@@ -7,8 +10,55 @@ import '../../../auth/domain/security_repository.dart';
 class TelemetryRepositoryImpl implements TelemetryRepository {
   final TeslaApiClient _apiClient;
   final SecurityRepository _securityRepository;
+  final FirebaseFirestore _firestore;
+  final Box<DriveSession> _tripBox;
+  final Box<ChargeSession> _chargeBox;
 
-  TelemetryRepositoryImpl(this._apiClient, this._securityRepository);
+  TelemetryRepositoryImpl(
+    this._apiClient, 
+    this._securityRepository, 
+    this._firestore,
+    this._tripBox, 
+    this._chargeBox
+  );
+
+  @override
+  Future<void> saveDriveSession(DriveSession session) async {
+    // 1. Save to Local Hive
+    await _tripBox.add(session);
+
+    // 2. Save to Firestore
+    if (session.vin != null) {
+      await _firestore
+          .collection('trip_history')
+          .add({
+            ...session.toJson(),
+            'timestamp': FieldValue.serverTimestamp(),
+          });
+      print('TelemetryRepository: Saved drive session to Firestore for ${session.vin}');
+    } else {
+      print('TelemetryRepository: Skipping Firestore save for drive session: VIN is null');
+    }
+  }
+
+  @override
+  Future<void> saveChargeSession(ChargeSession session) async {
+    // 1. Save to Local Hive
+    await _chargeBox.add(session);
+
+    // 2. Save to Firestore
+    if (session.vin != null) {
+      await _firestore
+          .collection('charging_history')
+          .add({
+            ...session.toJson(),
+            'timestamp': FieldValue.serverTimestamp(),
+          });
+      print('TelemetryRepository: Saved charge session to Firestore for ${session.vin}');
+    } else {
+      print('TelemetryRepository: Skipping Firestore save for charge session: VIN is null');
+    }
+  }
 
   @override
   Future<bool> configureTelemetry({

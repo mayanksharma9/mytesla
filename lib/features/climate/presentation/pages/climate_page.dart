@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../core/theme/volt_colors.dart';
+import '../../../dashboard/domain/vehicle.dart';
 import '../../../dashboard/presentation/bloc/vehicle_bloc.dart';
 import 'dart:ui';
 
@@ -51,7 +52,7 @@ class ClimatePage extends StatelessWidget {
           ),
         ),
       ),
-      body: BlocBuilder<VehicleBloc, VehicleState>(
+      body: BlocBuilder<VehicleBloc, VehicleBlocState>(
         builder: (context, vehicleState) {
           final vehicle = vehicleState.selectedVehicle;
           if (vehicle == null) {

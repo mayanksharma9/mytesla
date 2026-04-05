@@ -10,6 +10,7 @@ import 'core/utils/injection_container.dart' as di;
 import 'features/auth/presentation/bloc/auth_bloc.dart';
 import 'features/dashboard/presentation/bloc/vehicle_bloc.dart';
 import 'features/charging/presentation/bloc/charging_bloc.dart';
+import 'features/dashboard/data/models/tesla_models.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 void main() async {

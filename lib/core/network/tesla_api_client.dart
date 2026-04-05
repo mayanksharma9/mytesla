@@ -130,7 +130,12 @@ class TeslaApiClient {
   }
 
   Future<TeslaVehicleDataResponse> getVehicleData(String vehicleId) async {
-    final response = await _dio.get('/api/1/vehicles/$vehicleId/vehicle_data');
+    const endpoints = 'charge_state;climate_state;drive_state;gui_settings;vehicle_config;vehicle_state;location_data';
+    final response = await _dio.get(
+      '/api/1/vehicles/$vehicleId/vehicle_data',
+      queryParameters: {'endpoints': endpoints},
+    );
+    
     if (response.data == null || response.data['response'] == null) {
       throw Exception('TeslaApiClient: getVehicleData returned null or empty response');
     }
@@ -139,6 +144,28 @@ class TeslaApiClient {
 
   Future<Response> wakeUp(String vehicleId) async {
     return await _dio.post('/api/1/vehicles/$vehicleId/wake_up');
+  }
+
+  // --- Vehicle Command Protocol Support ---
+
+  /// Commands that currently fail or are unimplemented in the TVCP proxy
+  /// and should always use the direct Fleet API path.
+  static const Set<String> _directOnlyCommands = {};
+
+  /// Checks if a vehicle requires the new Tesla Vehicle Command Protocol (signed commands)
+  Future<bool> requiresTVCP(String vin) async {
+    try {
+      final response = await _dio.post(
+        '/api/1/vehicles/fleet_status',
+        data: {'vins': [vin]},
+      );
+      final Map<String, dynamic> status = response.data['response'] ?? {};
+      final bool required = status['vehicle_command_protocol_required']?[vin] ?? false;
+      return required;
+    } catch (e) {
+      debugPrint('TeslaApiClient: Error checking fleet_status for $vin: $e');
+      return true; // Default to true if check fails to be safe
+    }
   }
 
   // --- Signed Commands (Security & Access) ---
@@ -158,8 +185,17 @@ class TeslaApiClient {
     final vehicle = vehiclesDoc.response.firstWhere((v) => v.id.toString() == vehicleId);
     final vin = vehicle.vin;
 
-    // Check if we should use the new TVCP proxy
-    if (command == 'door_lock' || command == 'door_unlock') {
+    // Most write commands for third-party apps now require TVCP signing via proxy.
+    // However, some commands are not yet fully implemented in the protocol/proxy
+    // and should bypass to direct API if specified. 
+    // We also check requiresTVCP logic to optimize.
+    bool tryProxy = !_directOnlyCommands.contains(command);
+    
+    // Quick optimization: some models/years don't need TVCP at all.
+    // Uncomment when Fleet API usage is confirmed:
+    // tryProxy = tryProxy && await requiresTVCP(vin);
+
+    if (tryProxy) {
       int proxyAttempts = 0;
       while (proxyAttempts < 5) {
         try {
@@ -168,7 +204,7 @@ class TeslaApiClient {
           final token = await _storage.read(key: 'access_token');
           final proxyUrl = TeslaConfig.proxyUrl;
 
-          // POST to our new backend proxy!
+          // POST to our backend proxy for TVCP signing and delivery
           final response = await _dio.post(
             '$proxyUrl/api/command/$vin/$command',
             data: data,
@@ -183,30 +219,41 @@ class TeslaApiClient {
           return response;
         } catch (e) {
           if (e is DioException) {
-            debugPrint('TeslaApiClient: Proxy signing/sending failed: ${e.response?.statusCode} - ${e.response?.data}');
+            final statusCode = e.response?.statusCode;
+            final errorBody = e.response?.data;
+            debugPrint('TeslaApiClient: Proxy signing/sending failed: $statusCode - $errorBody');
             
-            // Check if it's the specific offline error
-            final errorData = e.response?.data;
-            if (e.response?.statusCode == 403 && errorData is Map && errorData['error'] == 'vehicle is offline') {
+            // 403 "vehicle is offline" is commonly returned when the car is sleeping
+            if (statusCode == 403 && errorBody is Map && 
+                (errorBody['error'] == 'vehicle is offline' || errorBody['error']?.toString().contains('offline') == true)) {
               proxyAttempts++;
-              if (proxyAttempts >= 5) rethrow; // Give up
+              if (proxyAttempts >= 5) rethrow; 
+              
               debugPrint('TeslaApiClient: Vehicle reported offline by proxy. Sending explicit wakeUp and retrying...');
               try {
                 await wakeUp(vehicleId);
-              } catch (_) {} // Ignore wakeUp errors
+              } catch (_) {} 
               await Future.delayed(const Duration(seconds: 4));
               continue;
             }
             
-            // If the proxy actually responded with another error from Tesla, do NOT fall back
+            // Detect "Not Implemented" or 500 status from proxy and fall back to direct
+            if (statusCode == 501 || statusCode == 500 || 
+                (errorBody is Map && errorBody['type'] == 'UnimplementedError')) {
+              debugPrint('TeslaApiClient: Proxy doesn\'t support $command. Falling back to direct Fleet API...');
+              tryProxy = false;
+              break;
+            }
+
+            // For other proxy responses, rethrow to avoid hiding real errors
             if (e.response != null) {
               rethrow;
             }
           } else {
-            debugPrint('TeslaApiClient: Proxy signing/sending failed: $e');
+            debugPrint('TeslaApiClient: Proxy signing/sending unexpected error: $e');
+            tryProxy = false;
+            break;
           }
-          // Fall back to standard API if proxy couldn't be reached
-          break; // Exit loop
         }
       }
     }
@@ -269,9 +316,10 @@ class TeslaApiClient {
 
   Future<Response> setTemperature(String vehicleId, double driverTemp, double passengerTemp) async {
     await _ensureOnline(vehicleId);
-    return await _dio.post(
-      '/api/1/vehicles/$vehicleId/command/set_temps',
-      data: {
+    return await _postSignedCommand(
+      vehicleId, 
+      'set_temps', 
+      {
         'driver_temp': driverTemp,
         'passenger_temp': passengerTemp,
       },
@@ -280,19 +328,20 @@ class TeslaApiClient {
 
   Future<Response> autoConditioningStart(String vehicleId) async {
     await _ensureOnline(vehicleId);
-    return await _dio.post('/api/1/vehicles/$vehicleId/command/auto_conditioning_start');
+    return await _postSignedCommand(vehicleId, 'auto_conditioning_start', {});
   }
 
   Future<Response> autoConditioningStop(String vehicleId) async {
     await _ensureOnline(vehicleId);
-    return await _dio.post('/api/1/vehicles/$vehicleId/command/auto_conditioning_stop');
+    return await _postSignedCommand(vehicleId, 'auto_conditioning_stop', {});
   }
 
   Future<Response> remoteSeatHeaterRequest(String vehicleId, int heater, int level) async {
     await _ensureOnline(vehicleId);
-    return await _dio.post(
-      '/api/1/vehicles/$vehicleId/command/remote_seat_heater_request',
-      data: {
+    return await _postSignedCommand(
+      vehicleId, 
+      'remote_seat_heater_request', 
+      {
         'heater': heater,
         'level': level,
       },
@@ -303,27 +352,29 @@ class TeslaApiClient {
 
   Future<Response> setChargeLimit(String vehicleId, int limit) async {
     await _ensureOnline(vehicleId);
-    return await _dio.post(
-      '/api/1/vehicles/$vehicleId/command/set_charge_limit',
-      data: {'percent': limit},
+    return await _postSignedCommand(
+      vehicleId, 
+      'set_charge_limit', 
+      {'percent': limit},
     );
   }
 
   Future<Response> chargeStart(String vehicleId) async {
     await _ensureOnline(vehicleId);
-    return await _dio.post('/api/1/vehicles/$vehicleId/command/charge_start');
+    return await _postSignedCommand(vehicleId, 'charge_start', {});
   }
 
   Future<Response> chargeStop(String vehicleId) async {
     await _ensureOnline(vehicleId);
-    return await _dio.post('/api/1/vehicles/$vehicleId/command/charge_stop');
+    return await _postSignedCommand(vehicleId, 'charge_stop', {});
   }
 
   Future<Response> setChargingAmps(String vehicleId, int amps) async {
     await _ensureOnline(vehicleId);
-    return await _dio.post(
-      '/api/1/vehicles/$vehicleId/command/set_charging_amps',
-      data: {'charging_amps': amps},
+    return await _postSignedCommand(
+      vehicleId, 
+      'set_charging_amps', 
+      {'charging_amps': amps},
     );
   }
 
@@ -346,12 +397,12 @@ class TeslaApiClient {
 
   Future<Response> flashLights(String vehicleId) async {
     await _ensureOnline(vehicleId);
-    return await _dio.post('/api/1/vehicles/$vehicleId/command/flash_lights');
+    return await _postSignedCommand(vehicleId, 'flash_lights', {});
   }
 
   Future<Response> honkHorn(String vehicleId) async {
     await _ensureOnline(vehicleId);
-    return await _dio.post('/api/1/vehicles/$vehicleId/command/honk_horn');
+    return await _postSignedCommand(vehicleId, 'honk_horn', {});
   }
 
   // --- User & Account ---
@@ -417,9 +468,12 @@ class TeslaApiClient {
 
   Future<Response> configureFleetTelemetry(String vehicleId, Map<String, dynamic> config) async {
     await _ensureOnline(vehicleId);
-    return await _dio.post(
-      '/api/1/vehicles/$vehicleId/fleet_telemetry_config',
-      data: config,
+    // Even telemetry config sometimes requires partner-level signing or proxying 
+    // to bypass 403 issues on standard account tokens
+    return await _postSignedCommand(
+      vehicleId, 
+      'fleet_telemetry_config', 
+      config,
     );
   }
 

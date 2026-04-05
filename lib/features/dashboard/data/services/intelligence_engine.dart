@@ -54,15 +54,18 @@ class IntelligenceEngine {
     }
 
     // 2. Battery Health Insight (Feature 4)
-    if (history.length >= 10) {
-      final report = _analyticsService.generateBatteryHealthReport(history, cache);
-      if (report.healthGrade == 'F' || report.healthGrade == 'D') {
+    if (history.isNotEmpty && cache != null) {
+      final report = _analyticsService.generateBatteryHealthReport(cache, history.first);
+      final healthGrade = report['grade'] as String? ?? 'N/A';
+      final degradation = report['degradation'] as double? ?? 0.0;
+
+      if (healthGrade == 'F' || healthGrade == 'D') {
         suggestions.add(SmartSuggestion(
           title: 'Battery Health Warning',
-          description: 'Significant degradation detected (${report.degradationPercentage.toStringAsFixed(1)}%). Consider a service check.',
+          description: 'Significant degradation detected (${degradation.toStringAsFixed(1)}%). Consider a service check.',
           icon: 'warning',
         ));
-      } else if (report.healthGrade == 'A' || report.healthGrade == 'B') {
+      } else if (healthGrade == 'A' || healthGrade == 'B') {
          suggestions.add(SmartSuggestion(
           title: 'Excellent Battery Health',
           description: 'Your battery is performing better than average. Keep up the good charging habits!',

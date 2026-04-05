@@ -11,8 +11,9 @@ import 'package:voltride/features/dashboard/presentation/bloc/vehicle_bloc.dart'
 import 'package:voltride/features/charging/presentation/bloc/charging_bloc.dart';
 import 'package:voltride/features/dashboard/domain/vehicle_repository.dart';
 import 'package:voltride/features/dashboard/data/repositories/vehicle_repository_impl.dart';
-import 'package:voltride/features/dashboard/data/services/telemetry_polling_service.dart';
+import 'package:voltride/core/services/vehicle_data_service.dart';
 import 'package:voltride/features/dashboard/data/services/intelligence_engine.dart';
+import 'package:voltride/features/telemetry/data/services/trip_detection_service.dart';
 import 'package:voltride/features/charging/domain/charging_repository.dart';
 import 'package:voltride/features/charging/data/repositories/charging_repository_impl.dart';
 import 'package:voltride/features/dashboard/data/services/telemetry_analytics_service.dart';
@@ -38,26 +39,32 @@ Future<void> init() async {
   sl.registerLazySingleton<SecurityRepository>(() => SecurityRepositoryImpl(sl()));
   
   // Choose between Production and Mock repository
-  // For production builds, we use VehicleRepositoryImpl
   sl.registerLazySingleton<VehicleRepository>(() => VehicleRepositoryImpl(
     sl(), // apiClient
     sl(), // firestore
-    sl(), // batteryBox
-    sl(), // tripBox
-    sl(), // chargeBox
-    sl(), // vehicleCacheBox
+    sl<Box<BatterySnapshot>>(instanceName: 'battery_snapshots'), // batteryBox
+    sl<Box<DriveSession>>(instanceName: 'trip_sessions'), // tripBox
+    sl<Box<ChargeSession>>(instanceName: 'charge_sessions'), // chargeBox
+    sl<Box<VehicleCache>>(instanceName: 'vehicle_cache'), // vehicleCacheBox
+    sl(), // tripDetectionService
   ));
   sl.registerLazySingleton<ChargingRepository>(() => ChargingRepositoryImpl(sl(), sl()));
-  sl.registerLazySingleton<TelemetryRepository>(() => TelemetryRepositoryImpl(sl(), sl()));
+  sl.registerLazySingleton<TelemetryRepository>(() => TelemetryRepositoryImpl(
+    sl(), 
+    sl(),
+    sl(),
+    sl<Box<DriveSession>>(instanceName: 'trip_sessions'),
+    sl<Box<ChargeSession>>(instanceName: 'charge_sessions'),
+  ));
   sl.registerLazySingleton<TripRepository>(() => TripRepository(sl()));
-  // sl.registerLazySingleton<VehicleRepository>(() => MockVehicleRepository());
 
   // API Client
   sl.registerLazySingleton(() => TeslaApiClient(sl(), sl(), sl()));
 
   // Services
   sl.registerLazySingleton(() => TelemetryAnalyticsService());
-  sl.registerLazySingleton(() => TelemetryPollingService(sl()));
+  sl.registerLazySingleton(() => VehicleDataService(sl(), sl()));
+  sl.registerLazySingleton(() => TripDetectionService(sl()));
   sl.registerLazySingleton(() => IntelligenceEngine(sl()));
 
   // External
@@ -66,11 +73,11 @@ Future<void> init() async {
   sl.registerLazySingleton(() => FirebaseFirestore.instance);
   
   // Hive Boxes
-  sl.registerLazySingleton(() => Hive.box('telemetry_history'));
-  sl.registerLazySingleton(() => Hive.box<BatterySnapshot>('battery_snapshots'));
-  sl.registerLazySingleton(() => Hive.box<DriveSession>('trip_sessions'));
-  sl.registerLazySingleton(() => Hive.box<ChargeSession>('charge_sessions'));
-  sl.registerLazySingleton(() => Hive.box<VehicleCache>('vehicle_cache'));
-  sl.registerLazySingleton(() => Hive.box('user_prefs'));
-  sl.registerLazySingleton(() => Hive.box('vehicle_settings'));
+  sl.registerLazySingleton(() => Hive.box('telemetry_history'), instanceName: 'telemetry_history');
+  sl.registerLazySingleton(() => Hive.box<BatterySnapshot>('battery_snapshots'), instanceName: 'battery_snapshots');
+  sl.registerLazySingleton(() => Hive.box<DriveSession>('trip_sessions'), instanceName: 'trip_sessions');
+  sl.registerLazySingleton(() => Hive.box<ChargeSession>('charge_sessions'), instanceName: 'charge_sessions');
+  sl.registerLazySingleton(() => Hive.box<VehicleCache>('vehicle_cache'), instanceName: 'vehicle_cache');
+  sl.registerLazySingleton(() => Hive.box('user_prefs'), instanceName: 'user_prefs');
+  sl.registerLazySingleton(() => Hive.box('vehicle_settings'), instanceName: 'vehicle_settings');
 }

@@ -31,7 +31,7 @@ class _VehicleSelectorPageState extends State<VehicleSelectorPage> {
         title: const Text('Your Vehicles'),
         backgroundColor: Colors.transparent,
       ),
-      body: BlocBuilder<VehicleBloc, VehicleState>(
+      body: BlocBuilder<VehicleBloc, VehicleBlocState>(
         builder: (context, state) {
           if (state.status == VehicleStatus.loading) {
             return const Center(child: CircularProgressIndicator(color: VoltColors.primary));

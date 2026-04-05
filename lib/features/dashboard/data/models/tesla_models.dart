@@ -61,6 +61,13 @@ int _dynamicToInt(dynamic value) {
   return 0;
 }
 
+int? _dynamicToNullableInt(dynamic value) {
+  if (value == null) return null;
+  if (value is num) return value.toInt();
+  if (value is String) return int.tryParse(value);
+  return null;
+}
+
 double _dynamicToDouble(dynamic value) {
   if (value is num) return value.toDouble();
   if (value is String) return double.tryParse(value) ?? 0.0;
@@ -100,6 +107,8 @@ class TeslaVehicleData {
   final DriveState? driveState;
   @JsonKey(name: 'gui_settings')
   final GuiSettings? guiSettings;
+  @JsonKey(name: 'vehicle_config')
+  final VehicleConfig? vehicleConfig;
 
   TeslaVehicleData({
     this.chargeState,
@@ -107,6 +116,7 @@ class TeslaVehicleData {
     this.vehicleState,
     this.driveState,
     this.guiSettings,
+    this.vehicleConfig,
   });
 
   factory TeslaVehicleData.fromJson(Map<String, dynamic> json) => _$TeslaVehicleDataFromJson(json);
@@ -149,20 +159,53 @@ class ChargeState {
   final double batteryRange;
   @JsonKey(name: 'ideal_battery_range', fromJson: _dynamicToDouble)
   final double idealBatteryRange;
+  @JsonKey(name: 'est_battery_range', fromJson: _dynamicToDouble)
+  final double estBatteryRange;
+  @JsonKey(name: 'energy_left', fromJson: _dynamicToDouble)
+  final double? energyLeft;
   @JsonKey(name: 'charge_limit_soc', fromJson: _dynamicToInt)
   final int chargeLimitSoc;
   @JsonKey(name: 'charge_current_request', fromJson: _dynamicToInt)
   final int chargeCurrentRequest;
   @JsonKey(name: 'charging_state', fromJson: _dynamicToString)
   final String chargingState;
+  @JsonKey(name: 'charge_rate', fromJson: _dynamicToDouble)
+  final double chargeRate;
+  @JsonKey(name: 'charger_power', fromJson: _dynamicToNullableInt)
+  final int? chargerPower;
+  @JsonKey(name: 'charger_voltage', fromJson: _dynamicToNullableInt)
+  final int? chargerVoltage;
+  @JsonKey(name: 'charger_phases', fromJson: _dynamicToNullableInt)
+  final int? chargerPhases;
+  @JsonKey(name: 'charge_energy_added', fromJson: _dynamicToDouble)
+  final double chargeEnergyAdded;
+  @JsonKey(name: 'time_to_full_charge', fromJson: _dynamicToDouble)
+  final double timeToFullCharge;
+  @JsonKey(name: 'battery_heater_on')
+  final bool batteryHeaterOn;
+  @JsonKey(name: 'fast_charger_type', fromJson: _dynamicToString)
+  final String? fastChargerType;
+  @JsonKey(name: 'conn_charge_cable', fromJson: _dynamicToString)
+  final String? connChargeType;
 
   ChargeState({
     required this.batteryLevel,
     required this.batteryRange,
     this.idealBatteryRange = 0.0,
+    this.estBatteryRange = 0.0,
+    this.energyLeft,
     required this.chargeLimitSoc,
     required this.chargeCurrentRequest,
     required this.chargingState,
+    this.chargeRate = 0.0,
+    this.chargerPower,
+    this.chargerVoltage,
+    this.chargerPhases,
+    this.chargeEnergyAdded = 0.0,
+    this.timeToFullCharge = 0.0,
+    this.batteryHeaterOn = false,
+    this.fastChargerType,
+    this.connChargeType,
   });
 
   factory ChargeState.fromJson(Map<String, dynamic> json) => _$ChargeStateFromJson(json);
@@ -181,8 +224,10 @@ class ClimateState {
   final double passengerTempSetting;
   @JsonKey(name: 'is_climate_on')
   final bool isClimateOn;
-  @JsonKey(name: 'battery_heater_on')
+  @JsonKey(name: 'battery_heater')
   final bool batteryHeaterOn;
+  @JsonKey(name: 'fan_status', fromJson: _dynamicToInt)
+  final int fanStatus;
 
   ClimateState({
     required this.insideTemp,
@@ -191,6 +236,7 @@ class ClimateState {
     required this.passengerTempSetting,
     required this.isClimateOn,
     this.batteryHeaterOn = false,
+    this.fanStatus = 0,
   });
 
   factory ClimateState.fromJson(Map<String, dynamic> json) => _$ClimateStateFromJson(json);
@@ -230,6 +276,21 @@ class VehicleState {
   @HiveField(10)
   @JsonKey(name: 'tpms_pressure_rr', fromJson: _dynamicToDouble)
   final double? tpmsPressureRr;
+  @HiveField(11)
+  @JsonKey(name: 'tpms_soft_warning_fl')
+  final bool? tpmsSoftWarningFl;
+  @HiveField(12)
+  @JsonKey(name: 'tpms_soft_warning_fr')
+  final bool? tpmsSoftWarningFr;
+  @HiveField(13)
+  @JsonKey(name: 'tpms_soft_warning_rl')
+  final bool? tpmsSoftWarningRl;
+  @HiveField(14)
+  @JsonKey(name: 'tpms_soft_warning_rr')
+  final bool? tpmsSoftWarningRr;
+  @HiveField(15)
+  @JsonKey(name: 'software_update')
+  final SoftwareUpdate? softwareUpdate;
 
   VehicleState({
     required this.odometer,
@@ -243,6 +304,11 @@ class VehicleState {
     this.tpmsPressureFr,
     this.tpmsPressureRl,
     this.tpmsPressureRr,
+    this.tpmsSoftWarningFl,
+    this.tpmsSoftWarningFr,
+    this.tpmsSoftWarningRl,
+    this.tpmsSoftWarningRr,
+    this.softwareUpdate,
   });
 
   factory VehicleState.fromJson(Map<String, dynamic> json) => _$VehicleStateFromJson(json);
@@ -259,12 +325,21 @@ class DriveState {
   final double speed;
   @JsonKey(name: 'shift_state', fromJson: _dynamicToNullableString)
   final String? shiftState;
+  @JsonKey(fromJson: _dynamicToInt)
+  final int heading;
+  @JsonKey(name: 'gps_as_of', fromJson: _dynamicToInt)
+  final int gpsAsOf;
+  @JsonKey(fromJson: _dynamicToInt)
+  final int power;
 
   DriveState({
     required this.latitude,
     required this.longitude,
     required this.speed,
     this.shiftState,
+    this.heading = 0,
+    this.gpsAsOf = 0,
+    this.power = 0,
   });
 
   factory DriveState.fromJson(Map<String, dynamic> json) => _$DriveStateFromJson(json);
@@ -610,45 +685,68 @@ class BatterySnapshot {
   factory BatterySnapshot.fromJson(Map<String, dynamic> json) => _$BatterySnapshotFromJson(json);
   Map<String, dynamic> toJson() => _$BatterySnapshotToJson(this);
 }
-
 @HiveType(typeId: 4)
 @JsonSerializable()
 class ChargeSession {
   @HiveField(0)
-  final DateTime timestamp;
+  final DateTime startTime;
   
   @HiveField(1)
-  final double energyAddedKwh;
+  final DateTime endTime;
   
   @HiveField(2)
-  final double cost;
+  final double startSoc;
   
   @HiveField(3)
-  @JsonKey(toJson: _durationToJson, fromJson: _durationFromJson)
-  final Duration duration;
+  final double endSoc;
   
   @HiveField(4)
-  final int startBattery;
+  final double startRange;
   
   @HiveField(5)
-  final int endBattery;
+  final double endRange;
   
   @HiveField(6)
-  final String? location;
+  final double kwhAdded;
+  
+  @HiveField(7)
+  final double chargerVoltage;
+  
+  @HiveField(8)
+  final int chargerPhases;
+  
+  @HiveField(9)
+  final double chargerPower;
+  
+  @HiveField(10)
+  final String? fastChargerType;
+  
+  @HiveField(11)
+  final String? connChargeType;
+
+  @HiveField(12)
+  final String? vin;
 
   ChargeSession({
-    required this.timestamp,
-    required this.energyAddedKwh,
-    required this.cost,
-    required this.duration,
-    required this.startBattery,
-    required this.endBattery,
-    this.location,
+    required this.startTime,
+    required this.endTime,
+    required this.startSoc,
+    required this.endSoc,
+    required this.startRange,
+    required this.endRange,
+    required this.kwhAdded,
+    required this.chargerVoltage,
+    required this.chargerPhases,
+    required this.chargerPower,
+    this.fastChargerType,
+    this.connChargeType,
+    this.vin,
   });
 
   factory ChargeSession.fromJson(Map<String, dynamic> json) => _$ChargeSessionFromJson(json);
   Map<String, dynamic> toJson() => _$ChargeSessionToJson(this);
 }
+
 
 @HiveType(typeId: 5)
 @JsonSerializable()
@@ -660,22 +758,22 @@ class DriveSession {
   final DateTime endTime;
   
   @HiveField(2)
-  final int startBattery;
+  final double startOdometer;
   
   @HiveField(3)
-  final int endBattery;
+  final double endOdometer;
   
   @HiveField(4)
-  final double startRange;
+  final double startSoc;
   
   @HiveField(5)
-  final double endRange;
+  final double endSoc;
   
   @HiveField(6)
-  final double odometerStart;
+  final double distance;
   
   @HiveField(7)
-  final double odometerEnd;
+  final double energyUsedKwh;
   
   @HiveField(8)
   final double efficiencyScore;
@@ -683,17 +781,21 @@ class DriveSession {
   @HiveField(9)
   final double avgOutsideTemp;
 
+  @HiveField(10)
+  final String? vin;
+
   DriveSession({
     required this.startTime,
     required this.endTime,
-    required this.startBattery,
-    required this.endBattery,
-    required this.startRange,
-    required this.endRange,
-    required this.odometerStart,
-    required this.odometerEnd,
+    required this.startOdometer,
+    required this.endOdometer,
+    required this.startSoc,
+    required this.endSoc,
+    required this.distance,
+    required this.energyUsedKwh,
     required this.efficiencyScore,
     required this.avgOutsideTemp,
+    this.vin,
   });
 
   factory DriveSession.fromJson(Map<String, dynamic> json) => _$DriveSessionFromJson(json);
@@ -801,4 +903,51 @@ class UserPrefs {
 // Helpers for JSON
 int _durationToJson(Duration duration) => duration.inSeconds;
 Duration _durationFromJson(int seconds) => Duration(seconds: seconds);
+
+@JsonSerializable()
+class SoftwareUpdate {
+  @JsonKey(name: 'expected_duration_sec', fromJson: _dynamicToInt)
+  final int expectedDurationSec;
+  @JsonKey(fromJson: _dynamicToString)
+  final String status;
+  @JsonKey(fromJson: _dynamicToString)
+  final String version;
+  @JsonKey(name: 'install_perc', fromJson: _dynamicToInt)
+  final int installPerc;
+
+  SoftwareUpdate({
+    required this.expectedDurationSec,
+    required this.status,
+    required this.version,
+    this.installPerc = 0,
+  });
+
+  factory SoftwareUpdate.fromJson(Map<String, dynamic> json) => _$SoftwareUpdateFromJson(json);
+  Map<String, dynamic> toJson() => _$SoftwareUpdateToJson(this);
+}
+
+@JsonSerializable()
+class VehicleConfig {
+  @JsonKey(name: 'car_type', fromJson: _dynamicToString)
+  final String? carType;
+  @JsonKey(name: 'charge_port_type', fromJson: _dynamicToString)
+  final String? chargePortType;
+  @JsonKey(name: 'exterior_color', fromJson: _dynamicToString)
+  final String? exteriorColor;
+  @JsonKey(name: 'roof_color', fromJson: _dynamicToString)
+  final String? roofColor;
+  @JsonKey(name: 'wheel_type', fromJson: _dynamicToString)
+  final String? wheelType;
+
+  VehicleConfig({
+    this.carType,
+    this.chargePortType,
+    this.exteriorColor,
+    this.roofColor,
+    this.wheelType,
+  });
+
+  factory VehicleConfig.fromJson(Map<String, dynamic> json) => _$VehicleConfigFromJson(json);
+  Map<String, dynamic> toJson() => _$VehicleConfigToJson(this);
+}
 

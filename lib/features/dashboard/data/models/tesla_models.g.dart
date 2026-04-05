@@ -28,13 +28,18 @@ class VehicleStateAdapter extends TypeAdapter<VehicleState> {
       tpmsPressureFr: fields[8] as double?,
       tpmsPressureRl: fields[9] as double?,
       tpmsPressureRr: fields[10] as double?,
+      tpmsSoftWarningFl: fields[11] as bool?,
+      tpmsSoftWarningFr: fields[12] as bool?,
+      tpmsSoftWarningRl: fields[13] as bool?,
+      tpmsSoftWarningRr: fields[14] as bool?,
+      softwareUpdate: fields[15] as SoftwareUpdate?,
     );
   }
 
   @override
   void write(BinaryWriter writer, VehicleState obj) {
     writer
-      ..writeByte(11)
+      ..writeByte(16)
       ..writeByte(0)
       ..write(obj.odometer)
       ..writeByte(1)
@@ -56,7 +61,17 @@ class VehicleStateAdapter extends TypeAdapter<VehicleState> {
       ..writeByte(9)
       ..write(obj.tpmsPressureRl)
       ..writeByte(10)
-      ..write(obj.tpmsPressureRr);
+      ..write(obj.tpmsPressureRr)
+      ..writeByte(11)
+      ..write(obj.tpmsSoftWarningFl)
+      ..writeByte(12)
+      ..write(obj.tpmsSoftWarningFr)
+      ..writeByte(13)
+      ..write(obj.tpmsSoftWarningRl)
+      ..writeByte(14)
+      ..write(obj.tpmsSoftWarningRr)
+      ..writeByte(15)
+      ..write(obj.softwareUpdate);
   }
 
   @override
@@ -188,34 +203,49 @@ class ChargeSessionAdapter extends TypeAdapter<ChargeSession> {
       for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
     return ChargeSession(
-      timestamp: fields[0] as DateTime,
-      energyAddedKwh: fields[1] as double,
-      cost: fields[2] as double,
-      duration: fields[3] as Duration,
-      startBattery: fields[4] as int,
-      endBattery: fields[5] as int,
-      location: fields[6] as String?,
+      startTime: fields[0] as DateTime,
+      endTime: fields[1] as DateTime,
+      startSoc: fields[2] as double,
+      endSoc: fields[3] as double,
+      startRange: fields[4] as double,
+      endRange: fields[5] as double,
+      kwhAdded: fields[6] as double,
+      chargerVoltage: fields[7] as double,
+      chargerPhases: fields[8] as int,
+      chargerPower: fields[9] as double,
+      fastChargerType: fields[10] as String?,
+      connChargeType: fields[11] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, ChargeSession obj) {
     writer
-      ..writeByte(7)
+      ..writeByte(12)
       ..writeByte(0)
-      ..write(obj.timestamp)
+      ..write(obj.startTime)
       ..writeByte(1)
-      ..write(obj.energyAddedKwh)
+      ..write(obj.endTime)
       ..writeByte(2)
-      ..write(obj.cost)
+      ..write(obj.startSoc)
       ..writeByte(3)
-      ..write(obj.duration)
+      ..write(obj.endSoc)
       ..writeByte(4)
-      ..write(obj.startBattery)
+      ..write(obj.startRange)
       ..writeByte(5)
-      ..write(obj.endBattery)
+      ..write(obj.endRange)
       ..writeByte(6)
-      ..write(obj.location);
+      ..write(obj.kwhAdded)
+      ..writeByte(7)
+      ..write(obj.chargerVoltage)
+      ..writeByte(8)
+      ..write(obj.chargerPhases)
+      ..writeByte(9)
+      ..write(obj.chargerPower)
+      ..writeByte(10)
+      ..write(obj.fastChargerType)
+      ..writeByte(11)
+      ..write(obj.connChargeType);
   }
 
   @override
@@ -242,12 +272,12 @@ class DriveSessionAdapter extends TypeAdapter<DriveSession> {
     return DriveSession(
       startTime: fields[0] as DateTime,
       endTime: fields[1] as DateTime,
-      startBattery: fields[2] as int,
-      endBattery: fields[3] as int,
-      startRange: fields[4] as double,
-      endRange: fields[5] as double,
-      odometerStart: fields[6] as double,
-      odometerEnd: fields[7] as double,
+      startOdometer: fields[2] as double,
+      endOdometer: fields[3] as double,
+      startSoc: fields[4] as double,
+      endSoc: fields[5] as double,
+      distance: fields[6] as double,
+      energyUsedKwh: fields[7] as double,
       efficiencyScore: fields[8] as double,
       avgOutsideTemp: fields[9] as double,
     );
@@ -262,17 +292,17 @@ class DriveSessionAdapter extends TypeAdapter<DriveSession> {
       ..writeByte(1)
       ..write(obj.endTime)
       ..writeByte(2)
-      ..write(obj.startBattery)
+      ..write(obj.startOdometer)
       ..writeByte(3)
-      ..write(obj.endBattery)
+      ..write(obj.endOdometer)
       ..writeByte(4)
-      ..write(obj.startRange)
+      ..write(obj.startSoc)
       ..writeByte(5)
-      ..write(obj.endRange)
+      ..write(obj.endSoc)
       ..writeByte(6)
-      ..write(obj.odometerStart)
+      ..write(obj.distance)
       ..writeByte(7)
-      ..write(obj.odometerEnd)
+      ..write(obj.energyUsedKwh)
       ..writeByte(8)
       ..write(obj.efficiencyScore)
       ..writeByte(9)
@@ -512,6 +542,10 @@ TeslaVehicleData _$TeslaVehicleDataFromJson(Map<String, dynamic> json) =>
       guiSettings: json['gui_settings'] == null
           ? null
           : GuiSettings.fromJson(json['gui_settings'] as Map<String, dynamic>),
+      vehicleConfig: json['vehicle_config'] == null
+          ? null
+          : VehicleConfig.fromJson(
+              json['vehicle_config'] as Map<String, dynamic>),
     );
 
 Map<String, dynamic> _$TeslaVehicleDataToJson(TeslaVehicleData instance) =>
@@ -521,6 +555,7 @@ Map<String, dynamic> _$TeslaVehicleDataToJson(TeslaVehicleData instance) =>
       'vehicle_state': instance.vehicleState,
       'drive_state': instance.driveState,
       'gui_settings': instance.guiSettings,
+      'vehicle_config': instance.vehicleConfig,
     };
 
 GuiSettings _$GuiSettingsFromJson(Map<String, dynamic> json) => GuiSettings(
@@ -548,9 +583,28 @@ ChargeState _$ChargeStateFromJson(Map<String, dynamic> json) => ChargeState(
       idealBatteryRange: json['ideal_battery_range'] == null
           ? 0.0
           : _dynamicToDouble(json['ideal_battery_range']),
+      estBatteryRange: json['est_battery_range'] == null
+          ? 0.0
+          : _dynamicToDouble(json['est_battery_range']),
+      energyLeft: _dynamicToDouble(json['energy_left']),
       chargeLimitSoc: _dynamicToInt(json['charge_limit_soc']),
       chargeCurrentRequest: _dynamicToInt(json['charge_current_request']),
       chargingState: _dynamicToString(json['charging_state']),
+      chargeRate: json['charge_rate'] == null
+          ? 0.0
+          : _dynamicToDouble(json['charge_rate']),
+      chargerPower: _dynamicToNullableInt(json['charger_power']),
+      chargerVoltage: _dynamicToNullableInt(json['charger_voltage']),
+      chargerPhases: _dynamicToNullableInt(json['charger_phases']),
+      chargeEnergyAdded: json['charge_energy_added'] == null
+          ? 0.0
+          : _dynamicToDouble(json['charge_energy_added']),
+      timeToFullCharge: json['time_to_full_charge'] == null
+          ? 0.0
+          : _dynamicToDouble(json['time_to_full_charge']),
+      batteryHeaterOn: json['battery_heater_on'] as bool? ?? false,
+      fastChargerType: _dynamicToString(json['fast_charger_type']),
+      connChargeType: _dynamicToString(json['conn_charge_cable']),
     );
 
 Map<String, dynamic> _$ChargeStateToJson(ChargeState instance) =>
@@ -558,9 +612,20 @@ Map<String, dynamic> _$ChargeStateToJson(ChargeState instance) =>
       'battery_level': instance.batteryLevel,
       'battery_range': instance.batteryRange,
       'ideal_battery_range': instance.idealBatteryRange,
+      'est_battery_range': instance.estBatteryRange,
+      'energy_left': instance.energyLeft,
       'charge_limit_soc': instance.chargeLimitSoc,
       'charge_current_request': instance.chargeCurrentRequest,
       'charging_state': instance.chargingState,
+      'charge_rate': instance.chargeRate,
+      'charger_power': instance.chargerPower,
+      'charger_voltage': instance.chargerVoltage,
+      'charger_phases': instance.chargerPhases,
+      'charge_energy_added': instance.chargeEnergyAdded,
+      'time_to_full_charge': instance.timeToFullCharge,
+      'battery_heater_on': instance.batteryHeaterOn,
+      'fast_charger_type': instance.fastChargerType,
+      'conn_charge_cable': instance.connChargeType,
     };
 
 ClimateState _$ClimateStateFromJson(Map<String, dynamic> json) => ClimateState(
@@ -569,7 +634,9 @@ ClimateState _$ClimateStateFromJson(Map<String, dynamic> json) => ClimateState(
       driverTempSetting: _dynamicToDouble(json['driver_temp_setting']),
       passengerTempSetting: _dynamicToDouble(json['passenger_temp_setting']),
       isClimateOn: json['is_climate_on'] as bool,
-      batteryHeaterOn: json['battery_heater_on'] as bool? ?? false,
+      batteryHeaterOn: json['battery_heater'] as bool? ?? false,
+      fanStatus:
+          json['fan_status'] == null ? 0 : _dynamicToInt(json['fan_status']),
     );
 
 Map<String, dynamic> _$ClimateStateToJson(ClimateState instance) =>
@@ -579,7 +646,8 @@ Map<String, dynamic> _$ClimateStateToJson(ClimateState instance) =>
       'driver_temp_setting': instance.driverTempSetting,
       'passenger_temp_setting': instance.passengerTempSetting,
       'is_climate_on': instance.isClimateOn,
-      'battery_heater_on': instance.batteryHeaterOn,
+      'battery_heater': instance.batteryHeaterOn,
+      'fan_status': instance.fanStatus,
     };
 
 VehicleState _$VehicleStateFromJson(Map<String, dynamic> json) => VehicleState(
@@ -594,6 +662,14 @@ VehicleState _$VehicleStateFromJson(Map<String, dynamic> json) => VehicleState(
       tpmsPressureFr: _dynamicToDouble(json['tpms_pressure_fr']),
       tpmsPressureRl: _dynamicToDouble(json['tpms_pressure_rl']),
       tpmsPressureRr: _dynamicToDouble(json['tpms_pressure_rr']),
+      tpmsSoftWarningFl: json['tpms_soft_warning_fl'] as bool?,
+      tpmsSoftWarningFr: json['tpms_soft_warning_fr'] as bool?,
+      tpmsSoftWarningRl: json['tpms_soft_warning_rl'] as bool?,
+      tpmsSoftWarningRr: json['tpms_soft_warning_rr'] as bool?,
+      softwareUpdate: json['software_update'] == null
+          ? null
+          : SoftwareUpdate.fromJson(
+              json['software_update'] as Map<String, dynamic>),
     );
 
 Map<String, dynamic> _$VehicleStateToJson(VehicleState instance) =>
@@ -609,6 +685,11 @@ Map<String, dynamic> _$VehicleStateToJson(VehicleState instance) =>
       'tpms_pressure_fr': instance.tpmsPressureFr,
       'tpms_pressure_rl': instance.tpmsPressureRl,
       'tpms_pressure_rr': instance.tpmsPressureRr,
+      'tpms_soft_warning_fl': instance.tpmsSoftWarningFl,
+      'tpms_soft_warning_fr': instance.tpmsSoftWarningFr,
+      'tpms_soft_warning_rl': instance.tpmsSoftWarningRl,
+      'tpms_soft_warning_rr': instance.tpmsSoftWarningRr,
+      'software_update': instance.softwareUpdate,
     };
 
 DriveState _$DriveStateFromJson(Map<String, dynamic> json) => DriveState(
@@ -616,6 +697,9 @@ DriveState _$DriveStateFromJson(Map<String, dynamic> json) => DriveState(
       longitude: _dynamicToDouble(json['longitude']),
       speed: _dynamicToDouble(json['speed']),
       shiftState: _dynamicToNullableString(json['shift_state']),
+      heading: json['heading'] == null ? 0 : _dynamicToInt(json['heading']),
+      gpsAsOf: json['gps_as_of'] == null ? 0 : _dynamicToInt(json['gps_as_of']),
+      power: json['power'] == null ? 0 : _dynamicToInt(json['power']),
     );
 
 Map<String, dynamic> _$DriveStateToJson(DriveState instance) =>
@@ -624,6 +708,9 @@ Map<String, dynamic> _$DriveStateToJson(DriveState instance) =>
       'longitude': instance.longitude,
       'speed': instance.speed,
       'shift_state': instance.shiftState,
+      'heading': instance.heading,
+      'gps_as_of': instance.gpsAsOf,
+      'power': instance.power,
     };
 
 ChargingLocation _$ChargingLocationFromJson(Map<String, dynamic> json) =>
@@ -894,35 +981,45 @@ Map<String, dynamic> _$BatterySnapshotToJson(BatterySnapshot instance) =>
 
 ChargeSession _$ChargeSessionFromJson(Map<String, dynamic> json) =>
     ChargeSession(
-      timestamp: DateTime.parse(json['timestamp'] as String),
-      energyAddedKwh: (json['energyAddedKwh'] as num).toDouble(),
-      cost: (json['cost'] as num).toDouble(),
-      duration: _durationFromJson((json['duration'] as num).toInt()),
-      startBattery: (json['startBattery'] as num).toInt(),
-      endBattery: (json['endBattery'] as num).toInt(),
-      location: json['location'] as String?,
+      startTime: DateTime.parse(json['startTime'] as String),
+      endTime: DateTime.parse(json['endTime'] as String),
+      startSoc: (json['startSoc'] as num).toDouble(),
+      endSoc: (json['endSoc'] as num).toDouble(),
+      startRange: (json['startRange'] as num).toDouble(),
+      endRange: (json['endRange'] as num).toDouble(),
+      kwhAdded: (json['kwhAdded'] as num).toDouble(),
+      chargerVoltage: (json['chargerVoltage'] as num).toDouble(),
+      chargerPhases: (json['chargerPhases'] as num).toInt(),
+      chargerPower: (json['chargerPower'] as num).toDouble(),
+      fastChargerType: json['fastChargerType'] as String?,
+      connChargeType: json['connChargeType'] as String?,
     );
 
 Map<String, dynamic> _$ChargeSessionToJson(ChargeSession instance) =>
     <String, dynamic>{
-      'timestamp': instance.timestamp.toIso8601String(),
-      'energyAddedKwh': instance.energyAddedKwh,
-      'cost': instance.cost,
-      'duration': _durationToJson(instance.duration),
-      'startBattery': instance.startBattery,
-      'endBattery': instance.endBattery,
-      'location': instance.location,
+      'startTime': instance.startTime.toIso8601String(),
+      'endTime': instance.endTime.toIso8601String(),
+      'startSoc': instance.startSoc,
+      'endSoc': instance.endSoc,
+      'startRange': instance.startRange,
+      'endRange': instance.endRange,
+      'kwhAdded': instance.kwhAdded,
+      'chargerVoltage': instance.chargerVoltage,
+      'chargerPhases': instance.chargerPhases,
+      'chargerPower': instance.chargerPower,
+      'fastChargerType': instance.fastChargerType,
+      'connChargeType': instance.connChargeType,
     };
 
 DriveSession _$DriveSessionFromJson(Map<String, dynamic> json) => DriveSession(
       startTime: DateTime.parse(json['startTime'] as String),
       endTime: DateTime.parse(json['endTime'] as String),
-      startBattery: (json['startBattery'] as num).toInt(),
-      endBattery: (json['endBattery'] as num).toInt(),
-      startRange: (json['startRange'] as num).toDouble(),
-      endRange: (json['endRange'] as num).toDouble(),
-      odometerStart: (json['odometerStart'] as num).toDouble(),
-      odometerEnd: (json['odometerEnd'] as num).toDouble(),
+      startOdometer: (json['startOdometer'] as num).toDouble(),
+      endOdometer: (json['endOdometer'] as num).toDouble(),
+      startSoc: (json['startSoc'] as num).toDouble(),
+      endSoc: (json['endSoc'] as num).toDouble(),
+      distance: (json['distance'] as num).toDouble(),
+      energyUsedKwh: (json['energyUsedKwh'] as num).toDouble(),
       efficiencyScore: (json['efficiencyScore'] as num).toDouble(),
       avgOutsideTemp: (json['avgOutsideTemp'] as num).toDouble(),
     );
@@ -931,12 +1028,12 @@ Map<String, dynamic> _$DriveSessionToJson(DriveSession instance) =>
     <String, dynamic>{
       'startTime': instance.startTime.toIso8601String(),
       'endTime': instance.endTime.toIso8601String(),
-      'startBattery': instance.startBattery,
-      'endBattery': instance.endBattery,
-      'startRange': instance.startRange,
-      'endRange': instance.endRange,
-      'odometerStart': instance.odometerStart,
-      'odometerEnd': instance.odometerEnd,
+      'startOdometer': instance.startOdometer,
+      'endOdometer': instance.endOdometer,
+      'startSoc': instance.startSoc,
+      'endSoc': instance.endSoc,
+      'distance': instance.distance,
+      'energyUsedKwh': instance.energyUsedKwh,
       'efficiencyScore': instance.efficiencyScore,
       'avgOutsideTemp': instance.avgOutsideTemp,
     };
@@ -988,4 +1085,40 @@ Map<String, dynamic> _$VehicleCacheToJson(VehicleCache instance) =>
       'batteryType': instance.batteryType,
       'motorCount': instance.motorCount,
       'options': instance.options,
+    };
+
+SoftwareUpdate _$SoftwareUpdateFromJson(Map<String, dynamic> json) =>
+    SoftwareUpdate(
+      expectedDurationSec: _dynamicToInt(json['expected_duration_sec']),
+      status: _dynamicToString(json['status']),
+      version: _dynamicToString(json['version']),
+      installPerc: json['install_perc'] == null
+          ? 0
+          : _dynamicToInt(json['install_perc']),
+    );
+
+Map<String, dynamic> _$SoftwareUpdateToJson(SoftwareUpdate instance) =>
+    <String, dynamic>{
+      'expected_duration_sec': instance.expectedDurationSec,
+      'status': instance.status,
+      'version': instance.version,
+      'install_perc': instance.installPerc,
+    };
+
+VehicleConfig _$VehicleConfigFromJson(Map<String, dynamic> json) =>
+    VehicleConfig(
+      carType: _dynamicToString(json['car_type']),
+      chargePortType: _dynamicToString(json['charge_port_type']),
+      exteriorColor: _dynamicToString(json['exterior_color']),
+      roofColor: _dynamicToString(json['roof_color']),
+      wheelType: _dynamicToString(json['wheel_type']),
+    );
+
+Map<String, dynamic> _$VehicleConfigToJson(VehicleConfig instance) =>
+    <String, dynamic>{
+      'car_type': instance.carType,
+      'charge_port_type': instance.chargePortType,
+      'exterior_color': instance.exteriorColor,
+      'roof_color': instance.roofColor,
+      'wheel_type': instance.wheelType,
     };

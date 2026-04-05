@@ -5,6 +5,8 @@ import '../../domain/vehicle_repository.dart';
 import 'package:voltride/features/dashboard/domain/tesla_product.dart' as domain;
 import 'package:voltride/core/network/tesla_api_client.dart';
 import '../models/tesla_models.dart';
+import 'package:hive/hive.dart';
+import 'package:voltride/features/telemetry/data/services/trip_detection_service.dart';
 
 class VehicleRepositoryImpl implements VehicleRepository {
   final TeslaApiClient _apiClient;
@@ -15,6 +17,7 @@ class VehicleRepositoryImpl implements VehicleRepository {
   final Box<DriveSession> _tripBox;
   final Box<ChargeSession> _chargeBox;
   final Box<VehicleCache> _vehicleCacheBox;
+  final TripDetectionService _tripDetectionService;
 
   VehicleRepositoryImpl(
     this._apiClient, 
@@ -23,6 +26,7 @@ class VehicleRepositoryImpl implements VehicleRepository {
     this._tripBox,
     this._chargeBox,
     this._vehicleCacheBox,
+    this._tripDetectionService,
   );
 
   @override
@@ -43,6 +47,9 @@ class VehicleRepositoryImpl implements VehicleRepository {
       
       final teslaVehicle = vehiclesResponse.response.firstWhere((v) => v.id == vehicleId);
       final vehicle = _mapTeslaVehicleDataToDomain(teslaVehicle, dataResponse.response);
+
+      // Trigger Trip Detection processing
+      await _tripDetectionService.processSnapshot(teslaVehicle.vin, dataResponse.response);
 
       // Sync to Firestore for persistence and analytics
       _syncToFirestore(vehicle);
@@ -311,6 +318,25 @@ class VehicleRepositoryImpl implements VehicleRepository {
   Vehicle _mapBasicTeslaVehicleToDomain(TeslaVehicle tesla) {
     try {
       print('Mapping basic vehicle: ${tesla.id}');
+      
+      // Try to find last known snapshot for this VIN to avoid showing 0s
+      final lastSnapshot = _batteryBox.values.lastWhere(
+        (s) => true, // In a multi-VIN world, we'd filter by VIN
+        orElse: () => BatterySnapshot(
+          timestamp: DateTime.now(),
+          batteryLevel: 0,
+          batteryRange: 0,
+          idealBatteryRange: 0,
+          outsideTemp: 0,
+          batteryHeaterOn: false,
+          chargeLimitSoc: 80,
+          shiftState: 'P',
+          odometer: 0,
+        ),
+      );
+
+      final cache = _vehicleCacheBox.get(tesla.vin);
+
       return Vehicle(
         id: tesla.id,
         vehicleId: tesla.vehicleId.toString(),
@@ -319,17 +345,19 @@ class VehicleRepositoryImpl implements VehicleRepository {
         optionCodes: tesla.optionCodes,
         color: tesla.color,
         state: tesla.state,
-        batteryLevel: 0,
-        batteryRange: 0,
-        outsideTemp: 0,
-        insideTemp: 0,
-        odometer: 0,
-        isLocked: true,
+        batteryLevel: lastSnapshot.batteryLevel,
+        batteryRange: lastSnapshot.batteryRange,
+        idealBatteryRange: lastSnapshot.idealBatteryRange,
+        outsideTemp: lastSnapshot.outsideTemp,
+        insideTemp: lastSnapshot.outsideTemp, // fallback
+        odometer: lastSnapshot.odometer,
+        isLocked: true, 
         isClimateOn: false,
         isSentryModeOn: false,
         isValetModeOn: false,
-        batteryHeaterOn: false,
-        chargeLimitSoc: 80,
+        batteryHeaterOn: lastSnapshot.batteryHeaterOn,
+        chargeLimitSoc: lastSnapshot.chargeLimitSoc,
+        shiftState: lastSnapshot.shiftState,
         frontTrunkState: 0,
         rearTrunkState: 0,
       );
@@ -379,6 +407,8 @@ class VehicleRepositoryImpl implements VehicleRepository {
       print('Error mapping detailed vehicle: $e');
       rethrow;
     }
+  }
+
   double _dynamicToDouble(dynamic value) {
     if (value == null) return 0.0;
     if (value is double) return value;

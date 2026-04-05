@@ -54,14 +54,15 @@ class EnergyAnalyticsPage extends StatelessWidget {
           ),
         ),
       ),
-      body: BlocBuilder<VehicleBloc, VehicleState>(
+      body: BlocBuilder<VehicleBloc, VehicleBlocState>(
         builder: (context, state) {
           final vehicle = state.selectedVehicle;
           if (vehicle == null) return const Center(child: CircularProgressIndicator());
 
           final analytics = di.sl<TelemetryAnalyticsService>();
           final currentMaxRange = vehicle.batteryRange / (vehicle.batteryLevel / 100);
-          final healthScore = analytics.getHealthScore(currentMaxRange, 310.0);
+          final referenceRange = state.vehicleCache?.epaRangeMiles ?? 310.0;
+          final healthScore = analytics.getHealthScore(currentMaxRange, referenceRange);
 
           return SingleChildScrollView(
             padding: const EdgeInsets.only(top: 100, left: 24, right: 24, bottom: 120),
@@ -104,32 +105,32 @@ class EnergyAnalyticsPage extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
                 
-                _EfficiencyLogItem(
-                  icon: Icons.commute,
-                  title: 'Morning Commute',
-                  subtitle: '24.2 miles • 42 mins',
-                  value: '242 Wh/mi',
-                  trend: 'EXCELLENT',
-                  isPositive: true,
-                ),
-                const SizedBox(height: 12),
-                _EfficiencyLogItem(
-                  icon: Icons.terrain,
-                  title: 'Mountain Pass',
-                  subtitle: '112 miles • 2h 15m',
-                  value: '310 Wh/mi',
-                  trend: 'NORMAL',
-                  isPositive: false,
-                ),
-                const SizedBox(height: 12),
-                _EfficiencyLogItem(
-                  icon: Icons.mode_night,
-                  title: 'Sentry Standby',
-                  subtitle: '14 hours • Static',
-                  value: '1.2 kWh',
-                  trend: 'PHANTOM DRAIN',
-                  isPositive: false,
-                ),
+                if (state.tripHistory.isEmpty)
+                   const Center(
+                     child: Padding(
+                       padding: EdgeInsets.symmetric(vertical: 32),
+                       child: Text('No driving sessions recorded yet.', style: TextStyle(color: Colors.grey)),
+                     ),
+                   )
+                else
+                  ...state.tripHistory.map((trip) {
+                    final efficiencyStr = '${(trip.efficiencyWhPerMi).toInt()} Wh/mi';
+                    final distanceStr = '${trip.distance.toStringAsFixed(1)} miles';
+                    final durationStr = '${trip.endTime.difference(trip.startTime).inMinutes} mins';
+                    final isEfficient = trip.efficiencyWhPerMi < (state.vehicleCache?.epaEfficiencyWhPerMi ?? 250);
+
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: _EfficiencyLogItem(
+                        icon: Icons.commute,
+                        title: 'Driving Session',
+                        subtitle: '$distanceStr • $durationStr',
+                        value: efficiencyStr,
+                        trend: isEfficient ? 'EXCELLENT' : 'NORMAL',
+                        isPositive: isEfficient,
+                      ),
+                    );
+                  }),
 
                 const SizedBox(height: 32),
 

@@ -1,7 +1,12 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:intl/intl.dart';
+import 'package:go_router/go_router.dart';
+import 'package:voltride/core/theme/volt_colors.dart';
+import 'package:voltride/features/telemetry/data/models/trip_model.dart';
 import 'package:voltride/features/telemetry/data/repositories/trip_repository.dart';
 import 'package:voltride/core/utils/injection_container.dart' as di;
 import 'package:voltride/features/dashboard/presentation/bloc/vehicle_bloc.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
 
 class TripsPage extends StatelessWidget {
   const TripsPage({super.key});

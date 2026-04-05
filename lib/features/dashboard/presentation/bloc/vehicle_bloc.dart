@@ -5,9 +5,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:voltride/features/charging/domain/charging_repository.dart';
 import '../../domain/vehicle.dart';
 import '../../domain/vehicle_repository.dart';
-import '../../data/models/tesla_models.dart' hide TeslaProduct;
+import '../../data/models/tesla_models.dart' as models hide TeslaProduct;
 import '../../domain/tesla_product.dart';
 import 'package:flutter/foundation.dart';
+import 'package:voltride/core/services/vehicle_data_service.dart';
+import '../../data/services/intelligence_engine.dart';
 
 // Events
 // ... (previous events here)
@@ -147,23 +149,27 @@ class FetchSpecs extends VehicleEvent {
 // States
 enum VehicleStatus { initial, loading, success, error, commandInProgress }
 
-class VehicleState extends Equatable {
+class VehicleBlocState extends Equatable {
   final VehicleStatus status;
   final List<Vehicle> vehicles;
   final List<TeslaProduct> products;
   final Vehicle? selectedVehicle;
-  final List<BatterySnapshot> batteryHistory;
-  final List<ChargingHistoryEntry> chargingHistory;
+  final List<models.BatterySnapshot> batteryHistory;
+  final List<models.ChargingHistoryEntry> chargingHistory;
+  final List<models.DriveSession> tripHistory;
   final String? error;
   final Set<String> loadingCommands; // Set of vehicleId_commandType strings
+  final models.VehicleCache? vehicleCache;
+  final List<SmartSuggestion> suggestions;
 
-  const VehicleState({
+  const VehicleBlocState({
     this.status = VehicleStatus.initial,
     this.vehicles = const [],
     this.products = const [],
     this.selectedVehicle,
     this.batteryHistory = const [],
     this.chargingHistory = const [],
+    this.tripHistory = const [],
     this.error,
     this.loadingCommands = const {},
     this.vehicleCache,
@@ -178,28 +184,33 @@ class VehicleState extends Equatable {
     selectedVehicle, 
     batteryHistory, 
     chargingHistory, 
+    tripHistory,
     error,
     vehicleCache,
     suggestions,
   ];
 
-  VehicleState copyWith({
+  VehicleBlocState copyWith({
     VehicleStatus? status,
     List<Vehicle>? vehicles,
     List<TeslaProduct>? products,
     Vehicle? selectedVehicle,
-    List<BatterySnapshot>? batteryHistory,
-    List<ChargingHistoryEntry>? chargingHistory,
+    List<models.BatterySnapshot>? batteryHistory,
+    List<models.ChargingHistoryEntry>? chargingHistory,
+    List<models.DriveSession>? tripHistory,
     String? error,
     Set<String>? loadingCommands,
+    models.VehicleCache? vehicleCache,
+    List<SmartSuggestion>? suggestions,
   }) {
-    return VehicleState(
+    return VehicleBlocState(
       status: status ?? this.status,
       vehicles: vehicles ?? this.vehicles,
       products: products ?? this.products,
       selectedVehicle: selectedVehicle ?? this.selectedVehicle,
       batteryHistory: batteryHistory ?? this.batteryHistory,
       chargingHistory: chargingHistory ?? this.chargingHistory,
+      tripHistory: tripHistory ?? this.tripHistory,
       error: error ?? this.error,
       loadingCommands: loadingCommands ?? this.loadingCommands,
       vehicleCache: vehicleCache ?? this.vehicleCache,
@@ -207,16 +218,14 @@ class VehicleState extends Equatable {
     );
   }
   
-  final VehicleCache? vehicleCache;
-  final List<SmartSuggestion> suggestions;
 }
 
 // Bloc
-class VehicleBloc extends Bloc<VehicleEvent, VehicleState> {
+class VehicleBloc extends Bloc<VehicleEvent, VehicleBlocState> {
   final VehicleRepository _repository;
   final ChargingRepository _chargingRepository;
   final FirebaseFirestore _firestore;
-  final TelemetryPollingService _pollingService;
+  final VehicleDataService _pollingService;
   final IntelligenceEngine _intelligenceEngine;
   Timer? _pollingTimer;
 
@@ -226,7 +235,7 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleState> {
     this._firestore,
     this._pollingService,
     this._intelligenceEngine,
-  ) : super(const VehicleState()) {
+  ) : super(const VehicleBlocState()) {
     on<FetchVehicles>(_onFetchVehicles);
     on<StartPolling>(_onStartPolling);
     on<StopPolling>(_onStopPolling);
@@ -249,13 +258,13 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleState> {
     on<FetchProducts>(_onFetchProducts);
   }
 
-  void _onStartPolling(StartPolling event, Emitter<VehicleState> emit) {
+  void _onStartPolling(StartPolling event, Emitter<VehicleBlocState> emit) {
     if (state.selectedVehicle != null) {
       _pollingService.startPolling(state.selectedVehicle!.id);
     }
   }
 
-  void _onStopPolling(StopPolling event, Emitter<VehicleState> emit) {
+  void _onStopPolling(StopPolling event, Emitter<VehicleBlocState> emit) {
     _pollingService.stopPolling();
   }
 
@@ -265,7 +274,7 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleState> {
     return super.close();
   }
 
-  Future<void> _onFetchVehicles(FetchVehicles event, Emitter<VehicleState> emit) async {
+  Future<void> _onFetchVehicles(FetchVehicles event, Emitter<VehicleBlocState> emit) async {
     // Only show full loading if we don't have vehicles yet
     if (state.vehicles.isEmpty) {
       emit(state.copyWith(status: VehicleStatus.loading));
@@ -306,7 +315,7 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleState> {
     }
   }
 
-  Future<void> _onFetchHistory(FetchHistory event, Emitter<VehicleState> emit) async {
+  Future<void> _onFetchHistory(FetchHistory event, Emitter<VehicleBlocState> emit) async {
     try {
       // 1. Fetch Battery Telemetry (Last 50 points)
       final batterySnapshots = await _firestore
@@ -319,7 +328,7 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleState> {
 
       final batteryHistory = batterySnapshots.docs.map((doc) {
         final data = doc.data();
-        return BatterySnapshot(
+        return models.BatterySnapshot(
           timestamp: (data['timestamp'] as Timestamp? ?? Timestamp.now()).toDate(),
           batteryLevel: (data['battery_level'] as num? ?? 0).toInt(),
           batteryRange: (data['battery_range'] as num? ?? 0).toDouble(),
@@ -332,21 +341,36 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleState> {
         );
       }).toList();
 
-      // 2. Fetch Charging History (Last 20)
+      print('VehicleBloc: Fetching history for VIN: ${event.vin}');
+      
+      // 2. Fetch Charging History (Last 50)
       final chargingSnapshots = await _firestore
           .collection('charging_history')
           .where('vin', isEqualTo: event.vin)
           .orderBy('charge_start_date_time', descending: true)
-          .limit(20)
+          .limit(50)
           .get();
 
       final chargingHistory = chargingSnapshots.docs.map((doc) {
-        return ChargingHistoryEntry.fromJson(doc.data());
+        return models.ChargingHistoryEntry.fromJson(doc.data());
+      }).toList();
+
+      // 3. Fetch Trip History (Last 50)
+      final tripSnapshots = await _firestore
+          .collection('trip_history')
+          .where('vin', isEqualTo: event.vin)
+          .orderBy('startTime', descending: true)
+          .limit(50)
+          .get();
+
+      final tripHistory = tripSnapshots.docs.map((doc) {
+        return models.DriveSession.fromJson(doc.data());
       }).toList();
 
       emit(state.copyWith(
         batteryHistory: batteryHistory,
         chargingHistory: chargingHistory,
+        tripHistory: tripHistory,
       ));
 
       // NEW: Generate suggestions based on updated history
@@ -359,13 +383,13 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleState> {
         emit(state.copyWith(suggestions: suggestions));
       }
       
-      print('VehicleBloc: Fetched history for ${event.vin} (${batteryHistory.length} battery, ${chargingHistory.length} charging)');
+      print('VehicleBloc: Fetched history for ${event.vin} (${batteryHistory.length} battery, ${chargingHistory.length} charging, ${tripHistory.length} trips)');
     } catch (e) {
-      print('VehicleBloc: Failed to fetch history: $e');
+      print('VehicleBloc: Failed to fetch history for ${event.vin}: $e');
     }
   }
 
-  Future<void> _onSelectVehicle(SelectVehicle event, Emitter<VehicleState> emit) async {
+  Future<void> _onSelectVehicle(SelectVehicle event, Emitter<VehicleBlocState> emit) async {
     final vehicle = state.vehicles.firstWhere(
       (v) => v.vin == event.vin, 
       orElse: () => state.vehicles.isNotEmpty ? state.vehicles.first : state.selectedVehicle!,
@@ -381,7 +405,7 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleState> {
     }
   }
 
-  Future<void> _onToggleLock(ToggleLock event, Emitter<VehicleState> emit) async {
+  Future<void> _onToggleLock(ToggleLock event, Emitter<VehicleBlocState> emit) async {
     final cmdId = '${event.vehicleId}_lock';
     final currentSelected = state.selectedVehicle;
     
@@ -415,7 +439,7 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleState> {
     }
   }
 
-  Future<void> _onActuateTrunk(ActuateTrunk event, Emitter<VehicleState> emit) async {
+  Future<void> _onActuateTrunk(ActuateTrunk event, Emitter<VehicleBlocState> emit) async {
     try {
       await _repository.actuateTrunk(event.vehicleId, event.whichTrunk);
       add(FetchVehicles());
@@ -424,7 +448,7 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleState> {
     }
   }
 
-  Future<void> _onToggleClimate(ToggleClimate event, Emitter<VehicleState> emit) async {
+  Future<void> _onToggleClimate(ToggleClimate event, Emitter<VehicleBlocState> emit) async {
     final cmdId = '${event.vehicleId}_climate';
     final currentSelected = state.selectedVehicle;
 
@@ -452,7 +476,7 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleState> {
     }
   }
 
-  Future<void> _onSetTemperature(SetTemperature event, Emitter<VehicleState> emit) async {
+  Future<void> _onSetTemperature(SetTemperature event, Emitter<VehicleBlocState> emit) async {
     try {
       await _repository.setTemperature(event.vehicleId, event.temp);
       add(FetchVehicles());
@@ -461,7 +485,7 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleState> {
     }
   }
 
-  Future<void> _onSetSeatHeater(SetSeatHeater event, Emitter<VehicleState> emit) async {
+  Future<void> _onSetSeatHeater(SetSeatHeater event, Emitter<VehicleBlocState> emit) async {
     try {
       await _repository.setSeatHeater(event.vehicleId, event.heater, event.level);
       add(FetchVehicles());
@@ -470,7 +494,7 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleState> {
     }
   }
 
-  Future<void> _onSetChargeLimit(SetChargeLimit event, Emitter<VehicleState> emit) async {
+  Future<void> _onSetChargeLimit(SetChargeLimit event, Emitter<VehicleBlocState> emit) async {
     try {
       await _repository.setChargeLimit(event.vehicleId, event.limit);
       add(FetchVehicles());
@@ -479,7 +503,7 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleState> {
     }
   }
 
-  Future<void> _onToggleCharging(ToggleCharging event, Emitter<VehicleState> emit) async {
+  Future<void> _onToggleCharging(ToggleCharging event, Emitter<VehicleBlocState> emit) async {
     final cmdId = '${event.vehicleId}_charging';
     final currentSelected = state.selectedVehicle;
 
@@ -513,7 +537,7 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleState> {
     }
   }
 
-  Future<void> _onSetChargingAmps(SetChargingAmps event, Emitter<VehicleState> emit) async {
+  Future<void> _onSetChargingAmps(SetChargingAmps event, Emitter<VehicleBlocState> emit) async {
     try {
       await _repository.setChargingAmps(event.vehicleId, event.amps);
       add(FetchVehicles());
@@ -522,7 +546,7 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleState> {
     }
   }
 
-  Future<void> _onHonkHorn(HonkHorn event, Emitter<VehicleState> emit) async {
+  Future<void> _onHonkHorn(HonkHorn event, Emitter<VehicleBlocState> emit) async {
     try {
       await _repository.honkHorn(event.vehicleId);
     } catch (e) {
@@ -530,7 +554,7 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleState> {
     }
   }
 
-  Future<void> _onFlashLights(FlashLights event, Emitter<VehicleState> emit) async {
+  Future<void> _onFlashLights(FlashLights event, Emitter<VehicleBlocState> emit) async {
     try {
       await _repository.flashLights(event.vehicleId);
     } catch (e) {
@@ -538,7 +562,7 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleState> {
     }
   }
 
-  Future<void> _onFetchProducts(FetchProducts event, Emitter<VehicleState> emit) async {
+  Future<void> _onFetchProducts(FetchProducts event, Emitter<VehicleBlocState> emit) async {
     try {
       final products = await _repository.getProducts();
       emit(state.copyWith(products: products));
@@ -547,7 +571,7 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleState> {
     }
   }
 
-  Future<void> _onToggleSentryMode(ToggleSentryMode event, Emitter<VehicleState> emit) async {
+  Future<void> _onToggleSentryMode(ToggleSentryMode event, Emitter<VehicleBlocState> emit) async {
     final cmdId = '${event.vehicleId}_sentry';
     final currentSelected = state.selectedVehicle;
 
@@ -575,7 +599,7 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleState> {
     }
   }
 
-  Future<void> _onToggleValetMode(ToggleValetMode event, Emitter<VehicleState> emit) async {
+  Future<void> _onToggleValetMode(ToggleValetMode event, Emitter<VehicleBlocState> emit) async {
     final cmdId = '${event.vehicleId}_valet';
     final currentSelected = state.selectedVehicle;
 
@@ -603,7 +627,7 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleState> {
     }
   }
 
-  Future<void> _onFetchSpecs(FetchSpecs event, Emitter<VehicleState> emit) async {
+  Future<void> _onFetchSpecs(FetchSpecs event, Emitter<VehicleBlocState> emit) async {
     try {
       final specs = await _repository.getVehicleSpecs(event.vin);
       emit(state.copyWith(vehicleCache: specs));

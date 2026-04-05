@@ -51,7 +51,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       backgroundColor: theme.scaffoldBackgroundColor,
       extendBodyBehindAppBar: true,
       appBar: _buildAppBar(context, isDark),
-      body: BlocBuilder<VehicleBloc, VehicleState>(
+      body: BlocBuilder<VehicleBloc, VehicleBlocState>(
         builder: (context, state) {
           if (state.status == VehicleStatus.error) {
             return Center(
@@ -105,10 +105,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 _buildSuggestionBanner(vehicle),
                 const SizedBox(height: 24),
                 _MainStatusCard(
+                  vehicle: vehicle,
                   batteryLevel: vehicle.batteryLevel.toDouble(),
                   range: vehicle.batteryRange.toInt(),
                   isCharging: vehicle.state == 'charging',
-                efficiencyScore: analytics.calculateEfficiencyScoreToday(state.batteryHistory),
+                  efficiencyScore: analytics.calculateEfficiencyScoreToday(state.batteryHistory, specs: state.vehicleCache),
                 ),
                 const SizedBox(height: 32),
                 _buildInsightsHub(context, state),
@@ -141,7 +142,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               ? Colors.black.withOpacity(0.4) 
               : Colors.white.withOpacity(0.6),
             elevation: 0,
-            title: BlocBuilder<VehicleBloc, VehicleState>(
+            title: BlocBuilder<VehicleBloc, VehicleBlocState>(
               builder: (context, state) {
                 final selectedVehicle = state.selectedVehicle;
                 final allVehicles = state.vehicles;
@@ -293,15 +294,28 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     );
   }
 
-  Widget _statsGrid(Vehicle vehicle, TelemetryAnalyticsService analytics, VehicleState state) {
+  Widget _statsGrid(Vehicle vehicle, TelemetryAnalyticsService analytics, VehicleBlocState state) {
+    // Check if we actually have data for today in trip history
+    final hasTripsToday = state.tripHistory.any((s) {
+      final today = DateTime.now();
+      return s.startTime.year == today.year && s.startTime.month == today.month && s.startTime.day == today.day;
+    });
+
+    // We still use batteryHistory for Vampire Drain as it's a real-time SOC-based calc
+    final hasBatteryDataToday = state.batteryHistory.any((s) {
+      final today = DateTime.now();
+      return s.timestamp.year == today.year && s.timestamp.month == today.month && s.timestamp.day == today.day;
+    });
+
     return Row(
       children: [
         Expanded(
           child: _StatTile(
             label: 'ENERGY',
-            value: analytics.calculateEnergyUsedToday(state.batteryHistory).toStringAsFixed(1),
+            value: analytics.calculateEnergyUsedTodayFromTrips(state.tripHistory).toStringAsFixed(1),
             unit: 'kWh',
             icon: Icons.bolt_outlined,
+            isCalculating: !hasTripsToday && state.status == VehicleStatus.loading,
           ),
         ),
         const SizedBox(width: 12),
@@ -309,11 +323,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           child: _StatTile(
             label: 'DISTANCE',
             value: UnitConverter.formatDistance(
-              analytics.calculateMilesDrivenToday(state.batteryHistory), 
+              analytics.calculateMilesDrivenTodayFromTrips(state.tripHistory), 
               useMiles: vehicle.useMiles
             ).split(' ')[0],
             unit: vehicle.useMiles ? 'mi' : 'km',
             icon: Icons.straighten_outlined,
+            isCalculating: !hasTripsToday && state.status == VehicleStatus.loading,
           ),
         ),
         const SizedBox(width: 12),
@@ -323,6 +338,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             value: analytics.calculateVampireDrain(state.batteryHistory, 24).toStringAsFixed(1),
             unit: '%',
             icon: Icons.nights_stay_outlined,
+            isCalculating: !hasBatteryDataToday && state.status == VehicleStatus.loading,
           ),
         ),
       ],
@@ -330,7 +346,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   Widget _buildSuggestionBanner(Vehicle vehicle) {
-    return BlocBuilder<VehicleBloc, VehicleState>(
+    return BlocBuilder<VehicleBloc, VehicleBlocState>(
       builder: (context, state) {
         if (state.suggestions.isEmpty) return const SizedBox.shrink();
 
@@ -415,9 +431,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
   }
 
-  Widget _buildInsightsHub(BuildContext context, VehicleState state) {
+  Widget _buildInsightsHub(BuildContext context, VehicleBlocState state) {
     final analytics = di.sl<TelemetryAnalyticsService>();
-    final report = analytics.generateBatteryHealthReport(state.batteryHistory, state.vehicleCache);
+    
+    // Only show if we have specs and at least one snapshot
+    if (state.vehicleCache == null || state.batteryHistory.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final report = analytics.generateBatteryHealthReport(state.vehicleCache!, state.batteryHistory.first);
+    final healthGrade = report['grade'] as String? ?? 'N/A';
+    final degradation = report['degradation'] as double? ?? 0.0;
     
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -432,18 +456,18 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               // Battery Health Card
               _InsightCard(
                 title: 'HEALTH GRADE',
-                value: report.healthGrade,
-                subtitle: '${report.degradationPercentage.toStringAsFixed(1)}% Degradation',
+                value: healthGrade,
+                subtitle: '${degradation.toStringAsFixed(1)}% Degradation',
                 icon: Icons.health_and_safety_outlined,
-                color: _getGradeColor(report.healthGrade),
+                color: _getGradeColor(healthGrade),
               ),
               const SizedBox(width: 16),
               // Warranty Card
-              if (state.vehicleCache?.batteryWarrantyExpiry != null)
+              if (state.vehicleCache?.warrantyExpiryDate != null)
                 _InsightCard(
                   title: 'WARRANTY EXPIRY',
-                  value: state.vehicleCache!.batteryWarrantyExpiry!.year.toString(),
-                  subtitle: '${state.vehicleCache!.batteryWarrantyExpiry!.difference(DateTime.now()).inDays ~/ 365} Years Left',
+                  value: state.vehicleCache!.warrantyExpiryDate!.year.toString(),
+                  subtitle: '${state.vehicleCache!.warrantyExpiryDate!.difference(DateTime.now()).inDays ~/ 365} Years Left',
                   icon: Icons.shield_outlined,
                   color: Colors.blueAccent,
                 ),
@@ -472,7 +496,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
   }
 
-  Widget _quickControls(BuildContext context, VehicleState state) {
+  Widget _quickControls(BuildContext context, VehicleBlocState state) {
     final vehicle = state.selectedVehicle!;
     final isLocked = vehicle.isLocked;
     final isClimateOn = vehicle.isClimateOn;
@@ -696,12 +720,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 }
 
 class _MainStatusCard extends StatelessWidget {
+  final Vehicle vehicle;
   final double batteryLevel;
   final int range;
   final bool isCharging;
   final double efficiencyScore;
 
   const _MainStatusCard({
+    required this.vehicle,
     required this.batteryLevel,
     required this.range,
     required this.isCharging,
@@ -911,12 +937,14 @@ class _StatTile extends StatelessWidget {
   final String value;
   final String unit;
   final IconData icon;
+  final bool isCalculating;
 
   const _StatTile({
     required this.label,
     required this.value,
     required this.unit,
     required this.icon,
+    this.isCalculating = false,
   });
 
   @override
@@ -937,7 +965,7 @@ class _StatTile extends StatelessWidget {
           Icon(icon, size: 20, color: VoltColors.primary),
           const SizedBox(height: 12),
           Text(
-            value,
+            isCalculating ? 'CALC...' : value,
             style: const TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.w900,

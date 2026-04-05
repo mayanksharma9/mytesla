@@ -36,7 +36,7 @@ class TeslaConfig {
   static String get developerDomain => dotenv.env['TESLA_DEVELOPER_DOMAIN'] ?? 'voltride.com';
   
   // URL of our custom TVCP signing proxy backend (Shelf/Cloud Run)
-  static String get proxyUrl => dotenv.env['TESLA_PROXY_URL'] ?? 'http://10.0.2.2:8080';
+  static String get proxyUrl => dotenv.env['TESLA_PROXY_URL'] ?? 'http://10.0.2.2:8081';
 
   // Audience for Fleet API
   static const String audience = 'https://fleet-api.prd.na.vn.cloud.tesla.com';

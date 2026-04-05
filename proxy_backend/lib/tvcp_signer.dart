@@ -6,7 +6,9 @@ import 'security_utils.dart';
 
 import 'proto/universal_message.pb.dart';
 import 'proto/signatures.pb.dart';
-import 'proto/vcsec.pb.dart' hide SignatureType;
+import 'proto/vcsec.pb.dart' as VCSEC hide SignatureType;
+import 'proto/car_server.pb.dart' as CarServer;
+import 'proto/common.pb.dart' as Common;
 
 class TVCPSession {
   final Domain domain;
@@ -82,28 +84,163 @@ class TVCPSigner {
     return _sessions[domain]!.isReady;
   }
 
+  static Domain getDomainForCommand(String commandName) {
+    switch (commandName) {
+      case 'door_lock':
+      case 'door_unlock':
+      case 'actuate_trunk':
+      case 'actuate_frunk':
+        return Domain.DOMAIN_VEHICLE_SECURITY;
+      default:
+        return Domain.DOMAIN_INFOTAINMENT;
+    }
+  }
+
   /// 3. Sign Command
   Future<String> signCommand(String commandName, {Map<String, dynamic>? data}) async {
-    final domain = Domain.DOMAIN_VEHICLE_SECURITY;
+    Domain domain;
+    List<int> payloadBytes;
+    final params = data ?? {};
+
+    // 1. Map Command to Protobuf and Domain
+    switch (commandName) {
+      // --- Security (VEHICLE_SECURITY domain) ---
+      case 'door_unlock':
+        domain = Domain.DOMAIN_VEHICLE_SECURITY;
+        payloadBytes = VCSEC.UnsignedMessage(
+          rKEAction: VCSEC.RKEAction_E.RKE_ACTION_UNLOCK,
+        ).writeToBuffer();
+        break;
+      case 'door_lock':
+        domain = Domain.DOMAIN_VEHICLE_SECURITY;
+        payloadBytes = VCSEC.UnsignedMessage(
+          rKEAction: VCSEC.RKEAction_E.RKE_ACTION_LOCK,
+        ).writeToBuffer();
+        break;
+      case 'actuate_trunk':
+        domain = Domain.DOMAIN_VEHICLE_SECURITY;
+        final which = params['which_trunk'] ?? 'rear';
+        final action = which == 'front' 
+          ? VCSEC.RKEAction_E.RKE_ACTION_OPEN_FRUNK 
+          : VCSEC.RKEAction_E.RKE_ACTION_OPEN_TRUNK;
+        payloadBytes = VCSEC.UnsignedMessage(
+          rKEAction: action,
+        ).writeToBuffer();
+        break;
+      case 'actuate_frunk':
+        domain = Domain.DOMAIN_VEHICLE_SECURITY;
+        payloadBytes = VCSEC.UnsignedMessage(
+          rKEAction: VCSEC.RKEAction_E.RKE_ACTION_OPEN_FRUNK,
+        ).writeToBuffer();
+        break;
+
+      // --- Climate (INFOTAINMENT domain) ---
+      case 'auto_conditioning_start':
+        domain = Domain.DOMAIN_INFOTAINMENT;
+        payloadBytes = CarServer.VehicleAction(
+          hvacAutoAction: CarServer.HvacAutoAction(powerOn: true),
+        ).writeToBuffer();
+        break;
+      case 'auto_conditioning_stop':
+        domain = Domain.DOMAIN_INFOTAINMENT;
+        payloadBytes = CarServer.VehicleAction(
+          hvacAutoAction: CarServer.HvacAutoAction(powerOn: false),
+        ).writeToBuffer();
+        break;
+      case 'set_temps':
+        domain = Domain.DOMAIN_INFOTAINMENT;
+        payloadBytes = CarServer.VehicleAction(
+          hvacTemperatureAdjustmentAction: CarServer.HvacTemperatureAdjustmentAction(
+            driverTempCelsius: (params['driver_temp'] ?? 22.0).toDouble(),
+            passengerTempCelsius: (params['passenger_temp'] ?? 22.0).toDouble(),
+          ),
+        ).writeToBuffer();
+        break;
+      case 'remote_seat_heater_request':
+        domain = Domain.DOMAIN_INFOTAINMENT;
+        final heaterIdx = params['heater'] ?? 0;
+        final level = params['level'] ?? 0;
+        
+        final action = CarServer.HvacSeatHeaterActions_HvacSeatHeaterAction();
+        _setSeatHeaterLevel(action, level);
+        _setSeatHeaterPosition(action, heaterIdx);
+
+        payloadBytes = CarServer.VehicleAction(
+          hvacSeatHeaterActions: CarServer.HvacSeatHeaterActions(
+            hvacSeatHeaterAction: [action],
+          ),
+        ).writeToBuffer();
+        break;
+
+      // --- Charging (INFOTAINMENT domain) ---
+      case 'charge_start':
+        domain = Domain.DOMAIN_INFOTAINMENT;
+        payloadBytes = CarServer.VehicleAction(
+          chargingStartStopAction: CarServer.ChargingStartStopAction(start: Common.Void()),
+        ).writeToBuffer();
+        break;
+      case 'charge_stop':
+        domain = Domain.DOMAIN_INFOTAINMENT;
+        payloadBytes = CarServer.VehicleAction(
+          chargingStartStopAction: CarServer.ChargingStartStopAction(stop: Common.Void()),
+        ).writeToBuffer();
+        break;
+      case 'set_charge_limit':
+        domain = Domain.DOMAIN_INFOTAINMENT;
+        payloadBytes = CarServer.VehicleAction(
+          chargingSetLimitAction: CarServer.ChargingSetLimitAction(percent: params['percent'] ?? 80),
+        ).writeToBuffer();
+        break;
+      case 'charge_port_door_open':
+        domain = Domain.DOMAIN_INFOTAINMENT;
+        payloadBytes = CarServer.VehicleAction(
+          chargePortDoorOpen: CarServer.ChargePortDoorOpen(),
+        ).writeToBuffer();
+        break;
+      case 'charge_port_door_close':
+        domain = Domain.DOMAIN_INFOTAINMENT;
+        payloadBytes = CarServer.VehicleAction(
+          chargePortDoorClose: CarServer.ChargePortDoorClose(),
+        ).writeToBuffer();
+        break;
+
+      // --- Alerts (INFOTAINMENT domain) ---
+      case 'honk_horn':
+        domain = Domain.DOMAIN_INFOTAINMENT;
+        payloadBytes = CarServer.VehicleAction(
+          vehicleControlHonkHornAction: CarServer.VehicleControlHonkHornAction(),
+        ).writeToBuffer();
+        break;
+      case 'flash_lights':
+        domain = Domain.DOMAIN_INFOTAINMENT;
+        payloadBytes = CarServer.VehicleAction(
+          vehicleControlFlashLightsAction: CarServer.VehicleControlFlashLightsAction(),
+        ).writeToBuffer();
+        break;
+      
+      // --- Security System ---
+      case 'set_sentry_mode':
+        domain = Domain.DOMAIN_INFOTAINMENT;
+        payloadBytes = CarServer.VehicleAction(
+          vehicleControlSetSentryModeAction: CarServer.VehicleControlSetSentryModeAction(on: params['on'] ?? false),
+        ).writeToBuffer();
+        break;
+
+      case 'set_charging_amps':
+        domain = Domain.DOMAIN_INFOTAINMENT;
+        payloadBytes = CarServer.VehicleAction(
+          setChargingAmpsAction: CarServer.SetChargingAmpsAction(chargingAmps: params['charging_amps'] ?? 16),
+        ).writeToBuffer();
+        break;
+
+      default:
+        throw UnimplementedError('Command $commandName not yet supported for TVCP signed command in proxy');
+    }
+
     final session = _sessions[domain]!;
     
     if (!session.isReady) {
-      throw Exception('Session not ready for $domain');
-    }
-
-    List<int> payloadBytes;
-    if (commandName == 'door_unlock') {
-      final msg = UnsignedMessage(
-        rKEAction: RKEAction_E.RKE_ACTION_UNLOCK,
-      );
-      payloadBytes = msg.writeToBuffer();
-    } else if (commandName == 'door_lock') {
-      final msg = UnsignedMessage(
-        rKEAction: RKEAction_E.RKE_ACTION_LOCK,
-      );
-      payloadBytes = msg.writeToBuffer();
-    } else {
-      throw UnimplementedError('Command $commandName not yet supported for TVCP signed command in proxy');
+      throw Exception('Session not ready for $domain. Handshake may be required.');
     }
 
     // Prepare metadata
@@ -163,6 +300,29 @@ class TVCPSigner {
     );
 
     return base64Encode(routableMessage.writeToBuffer());
+  }
+
+  static void _setSeatHeaterLevel(CarServer.HvacSeatHeaterActions_HvacSeatHeaterAction action, int level) {
+    switch (level) {
+      case 0: action.sEATHEATEROFF = Common.Void(); break;
+      case 1: action.sEATHEATERLOW = Common.Void(); break;
+      case 2: action.sEATHEATERMED = Common.Void(); break;
+      case 3: action.sEATHEATERHIGH = Common.Void(); break;
+      default: action.sEATHEATERUNKNOWN = Common.Void();
+    }
+  }
+
+  static void _setSeatHeaterPosition(CarServer.HvacSeatHeaterActions_HvacSeatHeaterAction action, int index) {
+    switch (index) {
+      case 0: action.cARSEATFRONTLEFT = Common.Void(); break;
+      case 1: action.cARSEATFRONTRIGHT = Common.Void(); break;
+      case 2: action.cARSEATREARLEFT = Common.Void(); break;
+      case 3: action.cARSEATREARCENTER = Common.Void(); break;
+      case 4: action.cARSEATREARRIGHT = Common.Void(); break;
+      case 5: action.cARSEATTHIRDROWLEFT = Common.Void(); break;
+      case 6: action.cARSEATTHIRDROWRIGHT = Common.Void(); break;
+      default: action.cARSEATUNKNOWN = Common.Void();
+    }
   }
 
   static List<int> _uint32ToBytes(int value) {

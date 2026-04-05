@@ -45,7 +45,7 @@ void main(List<String> args) async {
 
     try {
       // Step 1: Ensure Session is Ready
-      final domain = Domain.DOMAIN_VEHICLE_SECURITY;
+      final domain = TVCPSigner.getDomainForCommand(command);
       if (!signer.isSessionReady(domain)) {
         print('Session not ready for $vin, initiating handshake...');
         final requestMsg = await signer.createSessionInfoRequest(domain);
@@ -78,8 +78,17 @@ void main(List<String> args) async {
         }
       }
 
-      // Step 2: Sign and Send Command
-      final payloadB64 = await signer.signCommand(command);
+      // Step 2: Extract Body Data if present
+      final body = await request.readAsString();
+      Map<String, dynamic>? payload;
+      if (body.isNotEmpty) {
+        try {
+          payload = jsonDecode(body) as Map<String, dynamic>;
+        } catch (_) {}
+      }
+
+      // Step 3: Sign and Send Command
+      final payloadB64 = await signer.signCommand(command, data: payload);
       print('Sending command $command to $vin...');
       final commandRes = await teslaApi.sendSignedCommand(vin, payloadB64, token);
       print('Command API Response: $commandRes');

@@ -1,5 +1,6 @@
 import 'vehicle.dart';
-import 'tesla_product.dart';
+import 'tesla_product.dart' as domain;
+import '../data/models/tesla_models.dart';
 
 abstract class VehicleRepository {
   Future<List<Vehicle>> getVehicles();

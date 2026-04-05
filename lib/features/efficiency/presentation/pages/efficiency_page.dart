@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:voltride/features/dashboard/data/services/telemetry_analytics_service.dart';
+import 'package:voltride/features/dashboard/data/services/intelligence_engine.dart';
+import 'package:voltride/features/dashboard/data/models/tesla_models.dart';
+import 'package:voltride/core/utils/injection_container.dart' as di;
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:voltride/core/theme/volt_colors.dart';
@@ -23,19 +27,40 @@ class EfficiencyPage extends StatelessWidget {
         ),
         centerTitle: true,
       ),
-      body: BlocBuilder<VehicleBloc, VehicleState>(
+      body: BlocBuilder<VehicleBloc, VehicleBlocState>(
         builder: (context, state) {
           final vehicle = state.selectedVehicle;
           if (vehicle == null) {
             return const Center(child: CircularProgressIndicator());
           }
 
+          final analytics = di.sl<TelemetryAnalyticsService>();
+          final tripHistory = state.tripHistory;
+          
+          double currentDrive = 242.0; // Default fallback
+          double lifetimeAvg = 284.0; // Default fallback
+          
+          if (tripHistory.isNotEmpty) {
+            currentDrive = analytics.calculateEfficiencyWhPerMi(tripHistory.first);
+            double totalWh = 0;
+            double totalMi = 0;
+            for (var trip in tripHistory) {
+              totalWh += (analytics.calculateEfficiencyWhPerMi(trip) * trip.distance);
+              totalMi += trip.distance;
+            }
+            if (totalMi > 0) {
+              lifetimeAvg = totalWh / totalMi;
+            }
+          }
+
+          final trend = lifetimeAvg > 0 ? ((currentDrive - lifetimeAvg) / lifetimeAvg * 100) : 0.0;
+
           return SingleChildScrollView(
             padding: const EdgeInsets.all(24),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildComparisonRow(isDark),
+                _buildComparisonRow(isDark, currentDrive, lifetimeAvg, trend),
                 const SizedBox(height: 32),
                 _buildSectionTitle('EFFICIENCY VS SPEED'),
                 const SizedBox(height: 16),
@@ -43,7 +68,7 @@ class EfficiencyPage extends StatelessWidget {
                 const SizedBox(height: 32),
                 _buildSectionTitle('INTELLIGENT INSIGHTS'),
                 const SizedBox(height: 16),
-                _buildInsightsList(isDark),
+                _buildInsightsList(isDark, state.suggestions),
                 const SizedBox(height: 100),
               ],
             ),
@@ -53,15 +78,15 @@ class EfficiencyPage extends StatelessWidget {
     );
   }
 
-  Widget _buildComparisonRow(bool isDark) {
+  Widget _buildComparisonRow(bool isDark, double current, double lifetime, double trend) {
     return Row(
       children: [
         Expanded(
           child: _EfficiencyCard(
             label: 'CURRENT DRIVE',
-            value: '242',
+            value: current.toInt().toString(),
             unit: 'Wh/mi',
-            trend: -8,
+            trend: trend,
             isDark: isDark,
           ),
         ),
@@ -69,9 +94,9 @@ class EfficiencyPage extends StatelessWidget {
         Expanded(
           child: _EfficiencyCard(
             label: 'LIFETIME AVG',
-            value: '284',
+            value: lifetime.toInt().toString(),
             unit: 'Wh/mi',
-            trend: 2,
+            trend: 0, // No trend for lifetime itself
             isDark: isDark,
           ),
         ),
@@ -113,37 +138,37 @@ class EfficiencyPage extends StatelessWidget {
     );
   }
 
-  Widget _buildInsightsList(bool isDark) {
-    final insights = [
-      {
-        'title': 'Heavy Acceleration',
-        'desc': 'Your launch on Highway 101 reduced efficiency by 15% today.',
-        'icon': Icons.speed,
-        'color': Colors.orangeAccent,
-      },
-      {
-        'title': 'Optimal Temperature',
-        'desc': 'Mild weather contributed to 4.2% better range than last week.',
-        'icon': Icons.wb_sunny_outlined,
-        'color': Colors.greenAccent,
-      },
-      {
-        'title': 'High Speed Cruise',
-        'desc': 'Sustained 80mph driving used 22% more energy than 65mph.',
-        'icon': Icons.trending_up,
-        'color': Colors.redAccent,
-      },
-    ];
+  Widget _buildInsightsList(bool isDark, List<SmartSuggestion> suggestions) {
+    if (suggestions.isEmpty) {
+      return const Center(child: Text('Calculating insights...', style: TextStyle(color: Colors.grey, fontSize: 12)));
+    }
 
     return Column(
-      children: insights.map((i) => _InsightTile(
-        title: i['title'] as String,
-        desc: i['desc'] as String,
-        icon: i['icon'] as IconData,
-        color: i['color'] as Color,
+      children: suggestions.take(3).map<Widget>((s) => _InsightTile(
+        title: s.title,
+        desc: s.description,
+        icon: _getIconForSuggestion(s.icon),
+        color: _getColorForSuggestion(s.title),
         isDark: isDark,
       )).toList(),
     );
+  }
+
+  IconData _getIconForSuggestion(String iconName) {
+    switch (iconName) {
+      case 'battery_charging_full': return Icons.bolt;
+      case 'battery_saver': return Icons.battery_saver;
+      case 'warning': return Icons.warning_amber;
+      case 'speed': return Icons.speed;
+      case 'wb_sunny_outlined': return Icons.wb_sunny_outlined;
+      default: return Icons.insights;
+    }
+  }
+
+  Color _getColorForSuggestion(String title) {
+    if (title.contains('Warning')) return Colors.redAccent;
+    if (title.contains('Optimize')) return Colors.orangeAccent;
+    return VoltColors.primary;
   }
 }
 

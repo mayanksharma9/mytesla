@@ -53,7 +53,7 @@ class _ChargingPageState extends State<ChargingPage> with SingleTickerProviderSt
         ),
         centerTitle: true,
       ),
-      body: BlocBuilder<VehicleBloc, VehicleState>(
+      body: BlocBuilder<VehicleBloc, VehicleBlocState>(
         builder: (context, state) {
           final vehicle = state.selectedVehicle;
           if (vehicle == null) {
