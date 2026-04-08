@@ -581,6 +581,10 @@ class ChargingHistoryEntry {
   @JsonKey(name: 'location_id')
   final String? locationId;
 
+  @HiveField(6)
+  @JsonKey(name: 'session_id', fromJson: _dynamicToNullableString)
+  final String? sessionId;
+
   ChargingHistoryEntry({
     this.chargeStartDateTime,
     this.chargeStopDateTime,
@@ -588,6 +592,7 @@ class ChargingHistoryEntry {
     required this.totalCost,
     this.vin,
     this.locationId,
+    this.sessionId,
   });
 
   // Compatibility getters for existing UI
@@ -949,5 +954,49 @@ class VehicleConfig {
 
   factory VehicleConfig.fromJson(Map<String, dynamic> json) => _$VehicleConfigFromJson(json);
   Map<String, dynamic> toJson() => _$VehicleConfigToJson(this);
+}
+
+@JsonSerializable()
+class ChargingSessionsResponse {
+  @JsonKey(defaultValue: [])
+  final List<ChargingSessionInfo> response;
+  @JsonKey(defaultValue: 0)
+  final int count;
+
+  ChargingSessionsResponse({required this.response, required this.count});
+
+  factory ChargingSessionsResponse.fromJson(Map<String, dynamic> json) => _$ChargingSessionsResponseFromJson(json);
+  Map<String, dynamic> toJson() => _$ChargingSessionsResponseToJson(this);
+}
+
+@JsonSerializable()
+class ChargingSessionInfo {
+  @JsonKey(name: 'session_id', fromJson: _dynamicToString)
+  final String sessionId;
+  @JsonKey(name: 'vin')
+  final String? vin;
+  @JsonKey(name: 'start_date_time')
+  final String? startDateTime;
+  @JsonKey(name: 'end_date_time')
+  final String? endDateTime;
+  @JsonKey(name: 'energy_kwh', fromJson: _dynamicToDouble)
+  final double energyKwh;
+  @JsonKey(name: 'total_cost', fromJson: _dynamicToDouble)
+  final double totalCost;
+  @JsonKey(name: 'currency_code')
+  final String? currencyCode;
+
+  ChargingSessionInfo({
+    required this.sessionId,
+    this.vin,
+    this.startDateTime,
+    this.endDateTime,
+    required this.energyKwh,
+    required this.totalCost,
+    this.currencyCode,
+  });
+
+  factory ChargingSessionInfo.fromJson(Map<String, dynamic> json) => _$ChargingSessionInfoFromJson(json);
+  Map<String, dynamic> toJson() => _$ChargingSessionInfoToJson(this);
 }
 

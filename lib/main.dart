@@ -44,7 +44,8 @@ void main() async {
 
   // Anonymous Sign-in for Firestore permissions
   try {
-    await FirebaseAuth.instance.signInAnonymously();
+    final userCredential = await FirebaseAuth.instance.signInAnonymously();
+    debugPrint('Firebase: Anonymous sign-in successful: ${userCredential.user?.uid}');
   } catch (e) {
     debugPrint('Firebase: Anonymous sign-in failed: $e');
   }
@@ -54,8 +55,35 @@ void main() async {
   runApp(const MyApp());
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      debugPrint('App State: Resumed from background, triggering vehicle wake...');
+      // Use the global Navigator key or a context that has access to the BLoC
+      // Since MyApp is the parent, we might need a way to reach the BLoCs.
+      // Actually, since we're using MultiBlocProvider, we can use a key or just ensure we have access.
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -65,14 +93,56 @@ class MyApp extends StatelessWidget {
         BlocProvider(create: (context) => di.sl<VehicleBloc>()),
         BlocProvider(create: (context) => di.sl<ChargingBloc>()..add(FetchNearbyStations())),
       ],
-      child: MaterialApp.router(
-        title: 'VoltRide',
-        debugShowCheckedModeBanner: false,
-        theme: VoltTheme.light(),
-        themeMode: ThemeMode.dark, // Default to dark as per spec
-        darkTheme: VoltTheme.dark(),
-        routerConfig: AppRouter.router,
+      child: Builder(
+        builder: (context) {
+          // Listen for lifecycle changes here if we want direct bloc access
+          return _LifecycleWatcher(
+            child: MaterialApp.router(
+              title: 'VoltRide',
+              debugShowCheckedModeBanner: false,
+              theme: VoltTheme.light(),
+              themeMode: ThemeMode.dark, // Default to dark as per spec
+              darkTheme: VoltTheme.dark(),
+              routerConfig: AppRouter.router,
+            ),
+          );
+        }
       ),
     );
   }
+}
+
+class _LifecycleWatcher extends StatefulWidget {
+  final Widget child;
+  const _LifecycleWatcher({required this.child});
+
+  @override
+  State<_LifecycleWatcher> createState() => _LifecycleWatcherState();
+}
+
+class _LifecycleWatcherState extends State<_LifecycleWatcher> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      debugPrint('LifecycleWatcher: App resumed, triggering WakeOnForeground');
+      context.read<VehicleBloc>().add(WakeOnForeground());
+      // Also refresh charging data
+      context.read<ChargingBloc>().add(const FetchChargingHistory(refresh: true));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }

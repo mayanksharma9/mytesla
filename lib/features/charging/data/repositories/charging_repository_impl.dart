@@ -20,14 +20,25 @@ class ChargingRepositoryImpl implements ChargingRepository {
   }
 
   @override
-  Future<List<ChargingHistoryEntry>> getChargingHistory() async {
-    final response = await _apiClient.getChargingHistory();
+  Future<List<ChargingHistoryEntry>> getChargingHistory({int? page, int? perPage}) async {
+    final response = await _apiClient.getChargingHistory(page: page, perPage: perPage);
     final entries = response.response;
 
     // Sync to Firestore
     _syncToFirestore(entries);
 
     return entries;
+  }
+
+  @override
+  Future<List<int>> getChargingInvoice(String sessionId) async {
+    return await _apiClient.getChargingInvoice(sessionId);
+  }
+
+  @override
+  Future<List<ChargingSessionInfo>> getBusinessChargingSessions() async {
+    final response = await _apiClient.getChargingSessions();
+    return response.response;
   }
 
   Future<void> _syncToFirestore(List<ChargingHistoryEntry> entries) async {

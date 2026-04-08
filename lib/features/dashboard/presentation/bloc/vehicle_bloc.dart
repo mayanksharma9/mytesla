@@ -146,6 +146,8 @@ class FetchSpecs extends VehicleEvent {
   List<Object?> get props => [vin];
 }
 
+class WakeOnForeground extends VehicleEvent {}
+
 // States
 enum VehicleStatus { initial, loading, success, error, commandInProgress }
 
@@ -241,8 +243,8 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleBlocState> {
     on<StopPolling>(_onStopPolling);
     on<SelectVehicle>(_onSelectVehicle);
     on<FetchHistory>(_onFetchHistory);
-    on<FetchSpecs>(_onFetchSpecs); // New event
-    // ... existing handlers ...
+    on<FetchSpecs>(_onFetchSpecs);
+    on<WakeOnForeground>(_onWakeOnForeground);
     on<ToggleLock>(_onToggleLock);
     on<ActuateTrunk>(_onActuateTrunk);
     on<ToggleClimate>(_onToggleClimate);
@@ -385,7 +387,13 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleBlocState> {
       
       print('VehicleBloc: Fetched history for ${event.vin} (${batteryHistory.length} battery, ${chargingHistory.length} charging, ${tripHistory.length} trips)');
     } catch (e) {
-      print('VehicleBloc: Failed to fetch history for ${event.vin}: $e');
+      if (e is FirebaseException) {
+        debugPrint('VehicleBloc: Firestore Error [${e.code}]: ${e.message}');
+        if (e.message?.contains('index') ?? false) {
+          debugPrint('VehicleBloc: This query requires a composite index. Check the Firebase console or look for a URL in your flutter logs to create it.');
+        }
+      }
+      debugPrint('VehicleBloc: Failed to fetch history for ${event.vin}: $e');
     }
   }
 
@@ -636,6 +644,20 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleBlocState> {
       _repository.syncWarranty(event.vin);
     } catch (e) {
       print('VehicleBloc: Failed to fetch specs: $e');
+    }
+  }
+
+  Future<void> _onWakeOnForeground(WakeOnForeground event, Emitter<VehicleBlocState> emit) async {
+    final currentSelected = state.selectedVehicle;
+    if (currentSelected != null) {
+      debugPrint('VehicleBloc: App resumed, waking up vehicle ${currentSelected.id}');
+      try {
+        await _repository.wakeUp(currentSelected.id);
+        // Refresh data immediately to show latest status
+        add(FetchVehicles());
+      } catch (e) {
+        debugPrint('VehicleBloc: Foreground wakeup failed: $e');
+      }
     }
   }
 }

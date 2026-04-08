@@ -5,6 +5,7 @@ import '../data/models/tesla_models.dart';
 abstract class VehicleRepository {
   Future<List<Vehicle>> getVehicles();
   Future<Vehicle> getVehicleData(String vehicleId);
+  Future<void> wakeUp(String vehicleId);
   
   // Controls
   Future<void> lock(String vehicleId);

@@ -7,5 +7,4 @@ abstract class AuthRepository {
   Future<String?> getAccessToken();
 
   Future<UserProfile> getUserProfile();
-  Future<List<ChargingHistoryEntry>> getChargingHistory();
 }

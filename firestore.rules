@@ -2,11 +2,15 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // TEMPORARY: Broad access for debugging PERMISSION_DENIED and DEVELOPER_ERROR
-    match /vehicles/{vin}/{allSubcollections=**} {
+    // 1. Vehicles and all nested telemetry
+    match /vehicles/{vin} {
       allow read, write: if true;
+      match /{allSubcollections=**} {
+        allow read, write: if true;
+      }
     }
     
+    // 2. Specialized collections for history viewing
     match /trip_history/{id} {
       allow read, write: if true;
     }
@@ -15,7 +19,7 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
-    // Default allow for debugging
+    // Default catch-all for troubleshooting
     match /{document=**} {
       allow read, write: if true;
     }

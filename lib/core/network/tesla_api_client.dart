@@ -11,6 +11,9 @@ class TeslaApiClient {
   final FlutterSecureStorage _storage;
   final SecurityRepository _securityRepository;
 
+  // Singleton future to synchronize concurrent token refreshes
+  Future<bool>? _refreshFuture;
+
   TeslaApiClient(this._dio, this._storage, this._securityRepository) {
     _dio.options.baseUrl = 'https://fleet-api.prd.na.vn.cloud.tesla.com';
     _dio.interceptors.add(
@@ -42,14 +45,26 @@ class TeslaApiClient {
         },
         onError: (DioException e, handler) async {
           if (e.response?.statusCode == 401) {
-            debugPrint('TeslaApiClient: 401 Unauthorized, refreshing token...');
-            final success = await _triggerInternalRefresh();
-            if (success) {
-              // Retry the request
-              final token = await _storage.read(key: 'access_token');
-              e.requestOptions.headers['Authorization'] = 'Bearer $token';
-              final retryResponse = await _dio.fetch(e.requestOptions);
-              return handler.resolve(retryResponse);
+            final isFirstFail = _refreshFuture == null;
+            if (isFirstFail) {
+              debugPrint('TeslaApiClient: 401 Unauthorized detected. Starting synchronized token refresh...');
+              _refreshFuture = _triggerInternalRefresh();
+            }
+            
+            try {
+              final success = await _refreshFuture;
+              if (success != null && success) {
+                // Retry the request
+                final token = await _storage.read(key: 'access_token');
+                e.requestOptions.headers['Authorization'] = 'Bearer $token';
+                final retryResponse = await _dio.fetch(e.requestOptions);
+                return handler.resolve(retryResponse);
+              }
+            } finally {
+              // Only the first failing request (which started the future) clears it
+              if (isFirstFail) {
+                _refreshFuture = null;
+              }
             }
           }
           if (e.response?.statusCode == 408) {
@@ -94,7 +109,12 @@ class TeslaApiClient {
         return true;
       }
     } catch (e) {
-      debugPrint('TeslaApiClient: Refresh failed: $e');
+      if (e is DioException) {
+        debugPrint('TeslaApiClient: Refresh failed status: ${e.response?.statusCode}');
+        debugPrint('TeslaApiClient: Refresh failed body: ${e.response?.data}');
+      } else {
+        debugPrint('TeslaApiClient: Unexpected refresh error: $e');
+      }
     }
     return false;
   }
@@ -446,14 +466,37 @@ class TeslaApiClient {
     return await _dio.get('/api/1/vehicles/$vehicleId/release_notes');
   }
 
-  // --- Charging History ---
-
-  Future<ChargingHistoryResponse> getChargingHistory() async {
-    final response = await _dio.get('/api/1/dx/charging/history');
+  // --- Charging History & Invoices ---
+  
+  Future<ChargingHistoryResponse> getChargingHistory({int? page, int? perPage}) async {
+    final queryParams = <String, dynamic>{};
+    if (page != null) queryParams['page'] = page;
+    if (perPage != null) queryParams['per_page'] = perPage;
+    
+    final response = await _dio.get('/api/1/dx/charging/history', queryParameters: queryParams);
     if (response.data == null) {
       throw Exception('TeslaApiClient: getChargingHistory returned null data');
     }
     return ChargingHistoryResponse.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  Future<List<int>> getChargingInvoice(String sessionIdentifier) async {
+    final response = await _dio.get(
+      '/api/1/dx/charging/invoice/$sessionIdentifier',
+      options: Options(responseType: ResponseType.bytes),
+    );
+    if (response.data == null) {
+      throw Exception('TeslaApiClient: getChargingInvoice returned null data');
+    }
+    return response.data as List<int>;
+  }
+
+  Future<ChargingSessionsResponse> getChargingSessions() async {
+    final response = await _dio.get('/api/1/dx/charging/sessions');
+    if (response.data == null) {
+      throw Exception('TeslaApiClient: getChargingSessions returned null data');
+    }
+    return ChargingSessionsResponse.fromJson(response.data as Map<String, dynamic>);
   }
 
   // --- Products (Vehicles & Energy) ---

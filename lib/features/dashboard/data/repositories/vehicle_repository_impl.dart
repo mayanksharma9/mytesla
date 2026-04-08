@@ -65,6 +65,11 @@ class VehicleRepositoryImpl implements VehicleRepository {
     }
   }
 
+  @override
+  Future<void> wakeUp(String vehicleId) async {
+    await _apiClient.wakeUp(vehicleId);
+  }
+
   Future<void> _syncToFirestore(Vehicle vehicle) async {
     try {
       final vin = vehicle.vin;

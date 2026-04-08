@@ -169,11 +169,4 @@ class AuthRepositoryImpl implements AuthRepository {
     final client = TeslaApiClient(_dio, _storage, _securityRepository);
     return await client.getUserProfile();
   }
-
-  @override
-  Future<List<ChargingHistoryEntry>> getChargingHistory() async {
-    final client = TeslaApiClient(_dio, _storage, _securityRepository);
-    final response = await client.getChargingHistory();
-    return response.response;
-  }
 }

@@ -28,6 +28,8 @@ class TeslaConfig {
     'vehicle_device_data',
     'vehicle_cmds',
     'vehicle_charging_cmds',
+    'charging_history',
+    'charging_sessions',
   ];
 
   static String get scopeString => scopes.join(' ');

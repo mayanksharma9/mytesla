@@ -102,13 +102,14 @@ class ChargingHistoryEntryAdapter extends TypeAdapter<ChargingHistoryEntry> {
       totalCost: fields[3] as double,
       vin: fields[4] as String?,
       locationId: fields[5] as String?,
+      sessionId: fields[6] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, ChargingHistoryEntry obj) {
     writer
-      ..writeByte(6)
+      ..writeByte(7)
       ..writeByte(0)
       ..write(obj.chargeStartDateTime)
       ..writeByte(1)
@@ -120,7 +121,9 @@ class ChargingHistoryEntryAdapter extends TypeAdapter<ChargingHistoryEntry> {
       ..writeByte(4)
       ..write(obj.vin)
       ..writeByte(5)
-      ..write(obj.locationId);
+      ..write(obj.locationId)
+      ..writeByte(6)
+      ..write(obj.sessionId);
   }
 
   @override
@@ -215,13 +218,14 @@ class ChargeSessionAdapter extends TypeAdapter<ChargeSession> {
       chargerPower: fields[9] as double,
       fastChargerType: fields[10] as String?,
       connChargeType: fields[11] as String?,
+      vin: fields[12] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, ChargeSession obj) {
     writer
-      ..writeByte(12)
+      ..writeByte(13)
       ..writeByte(0)
       ..write(obj.startTime)
       ..writeByte(1)
@@ -245,7 +249,9 @@ class ChargeSessionAdapter extends TypeAdapter<ChargeSession> {
       ..writeByte(10)
       ..write(obj.fastChargerType)
       ..writeByte(11)
-      ..write(obj.connChargeType);
+      ..write(obj.connChargeType)
+      ..writeByte(12)
+      ..write(obj.vin);
   }
 
   @override
@@ -280,13 +286,14 @@ class DriveSessionAdapter extends TypeAdapter<DriveSession> {
       energyUsedKwh: fields[7] as double,
       efficiencyScore: fields[8] as double,
       avgOutsideTemp: fields[9] as double,
+      vin: fields[10] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, DriveSession obj) {
     writer
-      ..writeByte(10)
+      ..writeByte(11)
       ..writeByte(0)
       ..write(obj.startTime)
       ..writeByte(1)
@@ -306,7 +313,9 @@ class DriveSessionAdapter extends TypeAdapter<DriveSession> {
       ..writeByte(8)
       ..write(obj.efficiencyScore)
       ..writeByte(9)
-      ..write(obj.avgOutsideTemp);
+      ..write(obj.avgOutsideTemp)
+      ..writeByte(10)
+      ..write(obj.vin);
   }
 
   @override
@@ -907,6 +916,7 @@ ChargingHistoryEntry _$ChargingHistoryEntryFromJson(
       totalCost: _dynamicToDouble(json['total_cost']),
       vin: json['vin'] as String?,
       locationId: json['location_id'] as String?,
+      sessionId: _dynamicToNullableString(json['session_id']),
     );
 
 Map<String, dynamic> _$ChargingHistoryEntryToJson(
@@ -918,6 +928,7 @@ Map<String, dynamic> _$ChargingHistoryEntryToJson(
       'total_cost': instance.totalCost,
       'vin': instance.vin,
       'location_id': instance.locationId,
+      'session_id': instance.sessionId,
     };
 
 TeslaProductResponse _$TeslaProductResponseFromJson(
@@ -993,6 +1004,7 @@ ChargeSession _$ChargeSessionFromJson(Map<String, dynamic> json) =>
       chargerPower: (json['chargerPower'] as num).toDouble(),
       fastChargerType: json['fastChargerType'] as String?,
       connChargeType: json['connChargeType'] as String?,
+      vin: json['vin'] as String?,
     );
 
 Map<String, dynamic> _$ChargeSessionToJson(ChargeSession instance) =>
@@ -1009,6 +1021,7 @@ Map<String, dynamic> _$ChargeSessionToJson(ChargeSession instance) =>
       'chargerPower': instance.chargerPower,
       'fastChargerType': instance.fastChargerType,
       'connChargeType': instance.connChargeType,
+      'vin': instance.vin,
     };
 
 DriveSession _$DriveSessionFromJson(Map<String, dynamic> json) => DriveSession(
@@ -1022,6 +1035,7 @@ DriveSession _$DriveSessionFromJson(Map<String, dynamic> json) => DriveSession(
       energyUsedKwh: (json['energyUsedKwh'] as num).toDouble(),
       efficiencyScore: (json['efficiencyScore'] as num).toDouble(),
       avgOutsideTemp: (json['avgOutsideTemp'] as num).toDouble(),
+      vin: json['vin'] as String?,
     );
 
 Map<String, dynamic> _$DriveSessionToJson(DriveSession instance) =>
@@ -1036,6 +1050,7 @@ Map<String, dynamic> _$DriveSessionToJson(DriveSession instance) =>
       'energyUsedKwh': instance.energyUsedKwh,
       'efficiencyScore': instance.efficiencyScore,
       'avgOutsideTemp': instance.avgOutsideTemp,
+      'vin': instance.vin,
     };
 
 LocalVehicleInfo _$LocalVehicleInfoFromJson(Map<String, dynamic> json) =>
@@ -1121,4 +1136,45 @@ Map<String, dynamic> _$VehicleConfigToJson(VehicleConfig instance) =>
       'exterior_color': instance.exteriorColor,
       'roof_color': instance.roofColor,
       'wheel_type': instance.wheelType,
+    };
+
+ChargingSessionsResponse _$ChargingSessionsResponseFromJson(
+        Map<String, dynamic> json) =>
+    ChargingSessionsResponse(
+      response: (json['response'] as List<dynamic>?)
+              ?.map((e) =>
+                  ChargingSessionInfo.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          [],
+      count: (json['count'] as num?)?.toInt() ?? 0,
+    );
+
+Map<String, dynamic> _$ChargingSessionsResponseToJson(
+        ChargingSessionsResponse instance) =>
+    <String, dynamic>{
+      'response': instance.response,
+      'count': instance.count,
+    };
+
+ChargingSessionInfo _$ChargingSessionInfoFromJson(Map<String, dynamic> json) =>
+    ChargingSessionInfo(
+      sessionId: _dynamicToString(json['session_id']),
+      vin: json['vin'] as String?,
+      startDateTime: json['start_date_time'] as String?,
+      endDateTime: json['end_date_time'] as String?,
+      energyKwh: _dynamicToDouble(json['energy_kwh']),
+      totalCost: _dynamicToDouble(json['total_cost']),
+      currencyCode: json['currency_code'] as String?,
+    );
+
+Map<String, dynamic> _$ChargingSessionInfoToJson(
+        ChargingSessionInfo instance) =>
+    <String, dynamic>{
+      'session_id': instance.sessionId,
+      'vin': instance.vin,
+      'start_date_time': instance.startDateTime,
+      'end_date_time': instance.endDateTime,
+      'energy_kwh': instance.energyKwh,
+      'total_cost': instance.totalCost,
+      'currency_code': instance.currencyCode,
     };
