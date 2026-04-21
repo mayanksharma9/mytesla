@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:voltride/core/theme/volt_colors.dart';
 import 'dart:ui';
 import 'dart:math' as math;
@@ -34,6 +35,25 @@ class _HomePageState extends State<HomePage> {
     super.dispose();
   }
 
+  void _handleCommandError(BuildContext context, String error) {
+    if (error == 'VIRTUAL_KEY_NOT_ADDED') {
+      showModalBottomSheet(
+        context: context,
+        backgroundColor: Colors.transparent,
+        builder: (_) => const VirtualKeySheet(),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error),
+          backgroundColor: VoltColors.error,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -46,16 +66,7 @@ class _HomePageState extends State<HomePage> {
       body: BlocConsumer<VehicleBloc, VehicleBlocState>(
         listenWhen: (prev, curr) =>
             curr.commandError != null && curr.commandError != prev.commandError,
-        listener: (context, state) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(state.commandError!),
-              backgroundColor: VoltColors.error,
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            ),
-          );
-        },
+        listener: (context, state) => _handleCommandError(context, state.commandError!),
         builder: (context, state) {
           if (state.status == VehicleStatus.error) {
             return Center(
@@ -1184,6 +1195,107 @@ class _InsightCard extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Bottom sheet shown when a command is rejected because the virtual key for
+/// this app is not registered with the vehicle.
+class VirtualKeySheet extends StatelessWidget {
+  const VirtualKeySheet({super.key});
+
+  static const _keyUrl = 'https://tesla.com/_ak/thedevelopersharma.com';
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      margin: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(24),
+      ),
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: theme.colorScheme.outlineVariant,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(height: 20),
+          const Icon(Icons.key_off_rounded, size: 48, color: VoltColors.error),
+          const SizedBox(height: 12),
+          Text(
+            'Virtual Key Required',
+            style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'This app needs a virtual key registered on your vehicle before it can send commands.',
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          ),
+          const SizedBox(height: 20),
+          _Step(number: '1', text: 'Open the link below on your phone — it will launch the Tesla app automatically.'),
+          const SizedBox(height: 8),
+          _Step(number: '2', text: 'In the Tesla app, tap your car on the map to pair the key.'),
+          const SizedBox(height: 8),
+          _Step(number: '3', text: 'Come back here and retry the command.'),
+          const SizedBox(height: 24),
+          FilledButton.icon(
+            onPressed: () => launchUrl(Uri.parse(_keyUrl), mode: LaunchMode.externalApplication),
+            icon: const Icon(Icons.open_in_new_rounded, size: 18),
+            label: const Text('Register Virtual Key'),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(48),
+              backgroundColor: VoltColors.primary,
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Dismiss'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Step extends StatelessWidget {
+  final String number;
+  final String text;
+  const _Step({required this.number, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 24,
+          height: 24,
+          decoration: BoxDecoration(
+            color: VoltColors.primary.withValues(alpha: 0.15),
+            shape: BoxShape.circle,
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            number,
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: VoltColors.primary),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(text, style: theme.textTheme.bodyMedium),
+        ),
+      ],
     );
   }
 }

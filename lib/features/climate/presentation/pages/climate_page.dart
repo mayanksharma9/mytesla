@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:voltride/features/dashboard/presentation/pages/home_page.dart' show VirtualKeySheet;
 import '../../../../core/theme/volt_colors.dart';
 import '../../../dashboard/domain/vehicle.dart';
 import '../../../dashboard/presentation/bloc/vehicle_bloc.dart';
@@ -51,14 +52,23 @@ class _ClimatePageState extends State<ClimatePage> {
         listenWhen: (prev, curr) =>
             curr.commandError != null && curr.commandError != prev.commandError,
         listener: (context, state) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(state.commandError!),
-              backgroundColor: VoltColors.error,
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            ),
-          );
+          final error = state.commandError!;
+          if (error == 'VIRTUAL_KEY_NOT_ADDED') {
+            showModalBottomSheet(
+              context: context,
+              backgroundColor: Colors.transparent,
+              builder: (_) => const VirtualKeySheet(),
+            );
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(error),
+                backgroundColor: VoltColors.error,
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            );
+          }
         },
         builder: (context, vehicleState) {
           final vehicle = vehicleState.selectedVehicle;
