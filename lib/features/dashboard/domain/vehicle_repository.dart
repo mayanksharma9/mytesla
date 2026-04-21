@@ -16,12 +16,16 @@ abstract class VehicleRepository {
   Future<void> setTemperature(String vehicleId, double temp);
   Future<void> setClimateOn(String vehicleId, bool on);
   Future<void> setSeatHeater(String vehicleId, int heater, int level);
+  Future<void> setClimateKeeperMode(String vehicleId, String mode); // "dog", "camp", "on", "off"
   
   // Charging
   Future<void> setChargeLimit(String vehicleId, int limit);
   Future<void> startCharging(String vehicleId);
   Future<void> stopCharging(String vehicleId);
   Future<void> setChargingAmps(String vehicleId, int amps);
+  Future<void> openChargePort(String vehicleId);
+  Future<void> closeChargePort(String vehicleId);
+  Future<void> setScheduledCharging(String vehicleId, bool enable, {int? startTime});
 
   // Alerts
   Future<void> flashLights(String vehicleId);
@@ -38,6 +42,9 @@ abstract class VehicleRepository {
 
   // Power & Energy
   Future<List<domain.TeslaProduct>> getProducts();
+
+  // Fleet Telemetry
+  Future<void> configureFleetTelemetry(String vehicleId, String hostname);
   
   // History & Analytics (Local)
   Future<List<BatterySnapshot>> getBatteryHistory(String vin);

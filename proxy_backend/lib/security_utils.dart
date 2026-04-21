@@ -42,14 +42,11 @@ class SecurityUtils {
     final ecdh = ECDHBasicAgreement()..init(_privateKey!);
     final agreement = ecdh.calculateAgreement(peerPubKey);
 
-    // Get the X-coordinate as 32-byte array
+    // Tesla TVCP shared secret = raw 32-byte X-coordinate of the ECDH result.
+    // The caller then derives the HMAC key as HMAC-SHA256(sharedSecret, "authenticated command").
+    // Do NOT hash with SHA1 here — that was producing a wrong key.
     final xBytes = _encodeBigInt(agreement);
-    final paddedX = Uint8List(32)..setRange(32 - xBytes.length, 32, xBytes);
-
-    // Derive the session key using SHA1 of the X-coordinate
-    final digest = SHA1Digest();
-    final sharedKey = digest.process(paddedX);
-    return sharedKey.sublist(0, 16); // Only use first 16 bytes
+    return Uint8List(32)..setRange(32 - xBytes.length, 32, xBytes);
   }
 
   Uint8List _encodeBigInt(BigInt number) {

@@ -1,5 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-
 class TripModel {
   final String id;
   final String status;
@@ -27,13 +25,18 @@ class TripModel {
     required this.routePoints,
   });
 
-  factory TripModel.fromFirestore(DocumentSnapshot doc) {
-    var data = doc.data() as Map<String, dynamic>;
+  factory TripModel.fromJson(Map<String, dynamic> data, {String? id}) {
     return TripModel(
-      id: doc.id,
+      id: id ?? data['id'] ?? '',
       status: data['status'] ?? 'unknown',
-      startTime: (data['start_time'] as Timestamp).toDate(),
-      endTime: data['end_time'] != null ? (data['end_time'] as Timestamp).toDate() : null,
+      startTime: data['start_time'] is String 
+          ? DateTime.parse(data['start_time']) 
+          : DateTime.fromMillisecondsSinceEpoch(data['start_time'] ?? 0),
+      endTime: data['end_time'] != null 
+          ? (data['end_time'] is String 
+              ? DateTime.parse(data['end_time']) 
+              : DateTime.fromMillisecondsSinceEpoch(data['end_time']))
+          : null,
       startOdometer: (data['start_odometer'] ?? 0).toDouble(),
       endOdometer: data['end_odometer'] != null ? (data['end_odometer']).toDouble() : null,
       startBatteryLevel: (data['start_battery_level'] ?? 0).toDouble(),

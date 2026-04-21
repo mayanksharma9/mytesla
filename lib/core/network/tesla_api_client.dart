@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -13,6 +14,11 @@ class TeslaApiClient {
 
   // Singleton future to synchronize concurrent token refreshes
   Future<bool>? _refreshFuture;
+
+  /// Fires when Tesla returns `login_required` during a token refresh.
+  /// AuthBloc listens to this and dispatches LogoutRequested.
+  static final _sessionExpiredController = StreamController<void>.broadcast();
+  static Stream<void> get sessionExpired => _sessionExpiredController.stream;
 
   TeslaApiClient(this._dio, this._storage, this._securityRepository) {
     _dio.options.baseUrl = 'https://fleet-api.prd.na.vn.cloud.tesla.com';
@@ -112,6 +118,19 @@ class TeslaApiClient {
       if (e is DioException) {
         debugPrint('TeslaApiClient: Refresh failed status: ${e.response?.statusCode}');
         debugPrint('TeslaApiClient: Refresh failed body: ${e.response?.data}');
+
+        // login_required means the refresh token has been revoked or expired.
+        // Clear stored credentials immediately so further calls don't loop,
+        // then signal AuthBloc to navigate the user back to the login screen.
+        final body = e.response?.data;
+        final errorCode = body is Map ? body['error'] as String? : null;
+        if (errorCode == 'login_required' || e.response?.statusCode == 401) {
+          debugPrint('TeslaApiClient: Session permanently invalidated — clearing tokens.');
+          await _storage.delete(key: 'access_token');
+          await _storage.delete(key: 'refresh_token');
+          await _storage.delete(key: 'tesla_expires_at');
+          _sessionExpiredController.add(null);
+        }
       } else {
         debugPrint('TeslaApiClient: Unexpected refresh error: $e');
       }
@@ -223,6 +242,9 @@ class TeslaApiClient {
           
           final token = await _storage.read(key: 'access_token');
           final proxyUrl = TeslaConfig.proxyUrl;
+          // Forward the regional fleet API base URL so the proxy hits the
+          // correct Tesla endpoint (EU/NA/APAC) rather than the hardcoded NA URL.
+          final fleetBaseUrl = _dio.options.baseUrl;
 
           // POST to our backend proxy for TVCP signing and delivery
           final response = await _dio.post(
@@ -231,11 +253,34 @@ class TeslaApiClient {
             options: Options(
               headers: {
                 'Authorization': 'Bearer $token',
+                if (fleetBaseUrl.isNotEmpty) 'X-Fleet-Api-Base-Url': fleetBaseUrl,
               },
             ),
           );
           
           debugPrint('TeslaApiClient: Proxy Command $command response: ${response.statusCode} - ${response.data}');
+
+          // Tesla returns HTTP 200 with {response: null, error: "Unauthorized"}
+          // when the virtual key for this app is not on the vehicle's whitelist.
+          // Treat this as a real error so the UI surfaces it instead of silently
+          // appearing to succeed.
+          final body = response.data;
+          if (body is Map) {
+            final teslaError = body['error'] as String?;
+            if (teslaError != null && teslaError.isNotEmpty && body['response'] == null) {
+              if (teslaError.toLowerCase().contains('key not on whitelist')) {
+                throw Exception(
+                  'Virtual key not on vehicle whitelist. Open https://tesla.com/_ak/thedevelopersharma.com '
+                  'in the Tesla app and tap your car to register the key.',
+                );
+              }
+              if (teslaError.toLowerCase().contains('unauthorized')) {
+                // Transient HMAC rejection — proxy will reset and re-handshake automatically.
+                throw Exception('Command rejected by vehicle (Unauthorized). Please try again.');
+              }
+              throw Exception('Tesla command error: $teslaError');
+            }
+          }
           return response;
         } catch (e) {
           if (e is DioException) {
@@ -285,7 +330,20 @@ class TeslaApiClient {
       return response;
     } catch (e) {
       if (e is DioException) {
-        debugPrint('TeslaApiClient: Command $command failed: ${e.response?.statusCode} - ${e.response?.data}');
+        final body = e.response?.data;
+        debugPrint('TeslaApiClient: Command $command failed: ${e.response?.statusCode} - $body');
+
+        // 403 "Tesla Vehicle Command Protocol required" means the vehicle needs
+        // a registered virtual key for this app. Surface a clear action step.
+        if (e.response?.statusCode == 403 && body is Map) {
+          final msg = (body['error'] as String? ?? '').toLowerCase();
+          if (msg.contains('vehicle command protocol') || msg.contains('tvcp')) {
+            throw Exception(
+              'Virtual key required. Open the Tesla app on your phone, go to '
+              'Security → Third-Party App Keys, then tap your car to add the key.',
+            );
+          }
+        }
       } else {
         debugPrint('TeslaApiClient: Command $command failed: $e');
       }
@@ -359,13 +417,51 @@ class TeslaApiClient {
   Future<Response> remoteSeatHeaterRequest(String vehicleId, int heater, int level) async {
     await _ensureOnline(vehicleId);
     return await _postSignedCommand(
-      vehicleId, 
-      'remote_seat_heater_request', 
+      vehicleId,
+      'remote_seat_heater_request',
       {
         'heater': heater,
         'level': level,
       },
     );
+  }
+
+  /// Set climate keeper mode: "dog", "camp", "on", "off"
+  Future<Response> setClimateKeeperMode(String vehicleId, String mode) async {
+    await _ensureOnline(vehicleId);
+    return await _postSignedCommand(vehicleId, 'set_climate_keeper_mode', {'climate_keeper_mode': mode});
+  }
+
+  /// Control windows: "vent" or "close"; optional lat/lon for "close"
+  Future<Response> windowControl(String vehicleId, String command) async {
+    await _ensureOnline(vehicleId);
+    return await _postSignedCommand(vehicleId, 'window_control', {'command': command, 'lat': 0, 'lon': 0});
+  }
+
+  /// Set scheduled charging
+  Future<Response> setScheduledCharging(String vehicleId, bool enable, {int? startTime}) async {
+    await _ensureOnline(vehicleId);
+    final data = <String, dynamic>{'enable': enable};
+    if (startTime != null) data['time'] = startTime;
+    return await _postSignedCommand(vehicleId, 'set_scheduled_charging', data);
+  }
+
+  /// Set speed limit (mph)
+  Future<Response> speedLimitSetLimit(String vehicleId, int limitMph) async {
+    await _ensureOnline(vehicleId);
+    return await _postSignedCommand(vehicleId, 'speed_limit_set_limit', {'limit_mph': limitMph});
+  }
+
+  /// Activate speed limit mode (requires PIN)
+  Future<Response> speedLimitActivate(String vehicleId, String pin) async {
+    await _ensureOnline(vehicleId);
+    return await _postSignedCommand(vehicleId, 'speed_limit_activate', {'pin': pin});
+  }
+
+  /// Deactivate speed limit mode (requires PIN)
+  Future<Response> speedLimitDeactivate(String vehicleId, String pin) async {
+    await _ensureOnline(vehicleId);
+    return await _postSignedCommand(vehicleId, 'speed_limit_deactivate', {'pin': pin});
   }
 
   // --- Charging Commands ---
@@ -510,13 +606,11 @@ class TeslaApiClient {
   // --- Fleet Telemetry ---
 
   Future<Response> configureFleetTelemetry(String vehicleId, Map<String, dynamic> config) async {
-    await _ensureOnline(vehicleId);
-    // Even telemetry config sometimes requires partner-level signing or proxying 
-    // to bypass 403 issues on standard account tokens
-    return await _postSignedCommand(
-      vehicleId, 
-      'fleet_telemetry_config', 
-      config,
+    // fleet_telemetry_config is a direct Fleet API call, NOT a signed vehicle command.
+    // It must NOT go through _postSignedCommand / TVCP proxy.
+    return await _dio.post(
+      '/api/1/vehicles/$vehicleId/fleet_telemetry_config',
+      data: {'config': config},
     );
   }
 
@@ -533,10 +627,13 @@ class TeslaApiClient {
       );
 
       if (response.statusCode == 200) {
-        final regionUrl = response.data['region_url'] as String;
-        await _storage.write(key: 'tesla_region', value: regionUrl);
-        _dio.options.baseUrl = regionUrl;
-        debugPrint('TeslaApiClient: Region updated to: $regionUrl');
+        final regionData = response.data['response'];
+        final regionUrl = regionData?['fleet_api_base_url'] as String?;
+        if (regionUrl != null && regionUrl.isNotEmpty) {
+          await _storage.write(key: 'tesla_region', value: regionUrl);
+          _dio.options.baseUrl = regionUrl;
+          debugPrint('TeslaApiClient: Region updated to: $regionUrl');
+        }
       }
     } catch (e) {
       debugPrint('TeslaApiClient: Failed to update region: $e');

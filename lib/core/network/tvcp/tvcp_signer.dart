@@ -116,7 +116,7 @@ class TVCPSigner {
     // Prepare metadata
     session.counter += 1;
     final now = (DateTime.now().millisecondsSinceEpoch / 1000).round();
-    final expiresAt = now - session.clockDeltaSeconds! + 10; // expire in 10s
+    final expiresAt = now - session.clockDeltaSeconds! + 30; // 30s window in vehicle time
 
     final hmacData = HMAC_Personalized_Signature_Data(
       epoch: session.epoch,

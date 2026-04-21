@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:voltride/core/theme/volt_colors.dart';
 import 'package:voltride/features/dashboard/presentation/bloc/vehicle_bloc.dart';
-import 'package:voltride/features/dashboard/domain/vehicle.dart';
 import 'package:voltride/features/dashboard/data/services/telemetry_analytics_service.dart';
+import 'package:voltride/features/telemetry/data/repositories/charge_session_repository.dart';
+import 'package:voltride/features/dashboard/data/models/tesla_models.dart' show ChargeSession;
 import 'package:voltride/core/utils/injection_container.dart' as di;
 import 'dart:ui';
 
@@ -60,8 +61,10 @@ class EnergyAnalyticsPage extends StatelessWidget {
           if (vehicle == null) return const Center(child: CircularProgressIndicator());
 
           final analytics = di.sl<TelemetryAnalyticsService>();
-          final currentMaxRange = vehicle.batteryRange / (vehicle.batteryLevel / 100);
-          final referenceRange = state.vehicleCache?.epaRangeMiles ?? 310.0;
+          final referenceRange = state.vehicleCache?.originalRangeRating ?? 310.0;
+          final currentMaxRange = vehicle.batteryLevel > 0
+              ? vehicle.batteryRange / (vehicle.batteryLevel / 100)
+              : referenceRange;
           final healthScore = analytics.getHealthScore(currentMaxRange, referenceRange);
 
           return SingleChildScrollView(
@@ -92,7 +95,38 @@ class EnergyAnalyticsPage extends StatelessWidget {
                 ),
                 
                 const SizedBox(height: 16),
-                const _ChargingCurveCard(peakPower: 250),
+                FutureBuilder<ChargeSession?>(
+                  future: di.sl<ChargeSessionRepository>().getLastSession(vehicle.vin),
+                  builder: (context, snap) {
+                    final session = snap.data;
+                    final livePower = vehicle.chargerPower > 0 ? vehicle.chargerPower : null;
+                    // Active charging: show live kW; otherwise show last session curve
+                    final peakPower = livePower?.toInt()
+                        ?? (session != null && session.powerCurve.isNotEmpty
+                            ? session.powerCurve.reduce((a, b) => a > b ? a : b).toInt()
+                            : (state.vehicleCache?.batteryCapacityKwh != null
+                                ? (state.vehicleCache!.batteryCapacityKwh! > 90 ? 250 : 170)
+                                : 170));
+                    final chargerType = _resolveChargerType(
+                      vehicle.chargingState == 'Charging'
+                          ? vehicle.fastChargerType
+                          : session?.fastChargerType,
+                      vehicle.chargerPower > 0 ? vehicle.chargerPower : (session?.chargerPower ?? 0),
+                    );
+                    final powerCurve = vehicle.chargingState == 'Charging'
+                        ? null  // live session not yet complete
+                        : session?.powerCurve;
+                    final socCurve = vehicle.chargingState == 'Charging'
+                        ? null
+                        : session?.socCurve;
+                    return _ChargingCurveCard(
+                      peakPower: peakPower,
+                      chargerType: chargerType,
+                      powerCurve: powerCurve,
+                      socCurve: socCurve,
+                    );
+                  },
+                ),
                 const SizedBox(height: 24),
                 
                 Text(
@@ -109,15 +143,24 @@ class EnergyAnalyticsPage extends StatelessWidget {
                    const Center(
                      child: Padding(
                        padding: EdgeInsets.symmetric(vertical: 32),
-                       child: Text('No driving sessions recorded yet.', style: TextStyle(color: Colors.grey)),
+                       child: Text('No driving sessions recorded yet.', style: TextStyle(color: VoltColors.onSurfaceVariant)),
                      ),
                    )
                 else
                   ...state.tripHistory.map((trip) {
-                    final efficiencyStr = '${(trip.efficiencyWhPerMi).toInt()} Wh/mi';
-                    final distanceStr = '${trip.distance.toStringAsFixed(1)} miles';
+                    // Trip distance is stored in miles (Tesla API odometer is in miles)
+                    final distanceMi = trip.distance;
+                    final efficiencyWhPerMi = distanceMi > 0 ? (trip.energyUsedKwh / distanceMi * 1000) : 0.0;
+                    // Convert to km if user prefers metric
+                    final displayDistance = vehicle.useMiles ? distanceMi : distanceMi * 1.60934;
+                    final distanceStr = vehicle.useMiles
+                        ? '${distanceMi.toStringAsFixed(1)} mi'
+                        : '${displayDistance.toStringAsFixed(1)} km';
+                    final efficiencyStr = vehicle.useMiles
+                        ? '${efficiencyWhPerMi.toInt()} Wh/mi'
+                        : '${(efficiencyWhPerMi / 1.60934).toInt()} Wh/km';
                     final durationStr = '${trip.endTime.difference(trip.startTime).inMinutes} mins';
-                    final isEfficient = trip.efficiencyWhPerMi < (state.vehicleCache?.epaEfficiencyWhPerMi ?? 250);
+                    final isEfficient = efficiencyWhPerMi < 250;
 
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 12),
@@ -145,6 +188,31 @@ class EnergyAnalyticsPage extends StatelessWidget {
   }
 }
 
+/// Map Tesla API fastChargerType + chargerPower to a human-readable label.
+String _resolveChargerType(String? fastChargerType, double chargerPower) {
+  if (fastChargerType == null || fastChargerType.isEmpty) {
+    if (chargerPower > 100) return 'DC Fast Charge';
+    if (chargerPower > 0) return 'AC Level 2';
+    return 'No Charger';
+  }
+  switch (fastChargerType) {
+    case 'SuC':
+      return chargerPower >= 200 ? 'Supercharging V3' : 'Supercharging V2';
+    case 'MaxCharger':
+      return 'Supercharging V3';
+    case 'ACSingleWireCAN':
+    case 'SAE':
+      return 'AC Level 2';
+    case 'CCS':
+    case 'CCS2':
+      return 'CCS DC Fast Charge';
+    case 'CHAdeMO':
+      return 'CHAdeMO DC';
+    default:
+      return fastChargerType;
+  }
+}
+
 class _RangeCard extends StatelessWidget {
   final double batteryLevel;
   final int range;
@@ -157,7 +225,7 @@ class _RangeCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: isDark ? VoltColors.surfaceContainer : VoltColors.surfaceContainerLowest,
+        color: isDark ? VoltColors.surfaceElevatedDark : VoltColors.surfaceContainerLowest,
         borderRadius: BorderRadius.circular(24),
       ),
       child: Column(
@@ -230,7 +298,7 @@ class _BatteryHealthCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: isDark ? VoltColors.surfaceContainer : VoltColors.surfaceContainerLowest,
+        color: isDark ? VoltColors.surfaceElevatedDark : VoltColors.surfaceContainerLowest,
         borderRadius: BorderRadius.circular(24),
       ),
       child: Column(
@@ -271,8 +339,16 @@ class _BatteryHealthCard extends StatelessWidget {
 
 class _ChargingCurveCard extends StatelessWidget {
   final int peakPower;
+  final String chargerType;
+  final List<double>? powerCurve;
+  final List<double>? socCurve;
 
-  const _ChargingCurveCard({required this.peakPower});
+  const _ChargingCurveCard({
+    required this.peakPower,
+    this.chargerType = 'Supercharging',
+    this.powerCurve,
+    this.socCurve,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -280,7 +356,7 @@ class _ChargingCurveCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: isDark ? VoltColors.surfaceContainer : VoltColors.surfaceContainerLowest,
+        color: isDark ? VoltColors.surfaceElevatedDark : VoltColors.surfaceContainerLowest,
         borderRadius: BorderRadius.circular(24),
       ),
       child: Column(
@@ -293,7 +369,7 @@ class _ChargingCurveCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text('LAST SESSION CURVE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1.5, color: VoltColors.onSurfaceVariant)),
-                  Text('Supercharging V3', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontSize: 18, fontWeight: FontWeight.bold)),
+                  Text(chargerType, style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontSize: 18, fontWeight: FontWeight.bold)),
                 ],
               ),
               Column(
@@ -306,24 +382,12 @@ class _ChargingCurveCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 32),
-          // Faux Graph
+          // Power curve — real data only; show placeholder if not yet available
           SizedBox(
             height: 120,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: List.generate(20, (index) {
-                final heightFactor = (index < 10) ? (index + 5) / 15 : (25 - index) / 15;
-                return Container(
-                  width: 8,
-                  height: 100 * heightFactor.clamp(0.2, 1.0),
-                  decoration: BoxDecoration(
-                    color: VoltColors.primary.withValues(alpha: (heightFactor * 0.8).clamp(0.1, 1.0)),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                );
-              }),
-            ),
+            child: powerCurve != null && powerCurve!.isNotEmpty
+                ? _buildRealCurve(powerCurve!, peakPower)
+                : _buildNoCurveState(),
           ),
           const SizedBox(height: 8),
           Row(
@@ -332,6 +396,41 @@ class _ChargingCurveCard extends StatelessWidget {
           )
         ],
       ),
+    );
+  }
+
+  Widget _buildRealCurve(List<double> curve, int peak) {
+    final maxPower = peak.toDouble().clamp(1.0, double.infinity);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: curve.map((kw) {
+        final factor = (kw / maxPower).clamp(0.05, 1.0);
+        return Expanded(
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 1),
+            height: 100 * factor,
+            decoration: BoxDecoration(
+              color: VoltColors.primary.withValues(alpha: (factor * 0.8 + 0.2).clamp(0.0, 1.0)),
+              borderRadius: BorderRadius.circular(3),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildNoCurveState() {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(Icons.bolt_outlined, size: 32, color: VoltColors.onSurfaceVariant.withOpacity(0.3)),
+        const SizedBox(height: 8),
+        Text(
+          'Curve captured after next charge session',
+          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: VoltColors.onSurfaceVariant),
+          textAlign: TextAlign.center,
+        ),
+      ],
     );
   }
 }
@@ -359,7 +458,7 @@ class _EfficiencyLogItem extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isDark ? VoltColors.surfaceContainer : VoltColors.surfaceContainerLowest,
+        color: isDark ? VoltColors.surfaceElevatedDark : VoltColors.surfaceContainerLowest,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Row(

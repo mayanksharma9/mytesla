@@ -50,12 +50,13 @@ class MainScaffold extends StatelessWidget {
               ],
             ),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
                 _buildNavItem(context, Icons.home_outlined, 'Home', 0),
                 _buildNavItem(context, Icons.battery_charging_full_outlined, 'Battery', 1),
                 _buildNavItem(context, Icons.ev_station_outlined, 'Charging', 2),
                 _buildNavItem(context, Icons.trending_up, 'Efficiency', 3),
+                _buildNavItem(context, Icons.more_horiz, 'More', 4),
               ],
             ),
           ),
@@ -76,7 +77,7 @@ class MainScaffold extends StatelessWidget {
       onTap: () => navigationShell.goBranch(index),
       behavior: HitTestBehavior.opaque,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: isActive
             ? BoxDecoration(
                 color: isDark ? VoltColors.surfaceOverlayDark : VoltColors.surfaceContainerLow,

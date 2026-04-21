@@ -1,32 +1,22 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import '../models/trip_model.dart';
-import 'package:injectable/injectable.dart';
+import 'package:hive/hive.dart';
+import 'package:voltride/features/dashboard/data/models/tesla_models.dart';
 
-@injectable
 class TripRepository {
-  final FirebaseFirestore _firestore;
+  final Box<DriveSession> _tripBox;
 
-  TripRepository(this._firestore);
+  TripRepository(this._tripBox);
 
-  Stream<List<TripModel>> getTripsStream(String vin) {
-    return _firestore
-        .collection('vehicles')
-        .doc(vin)
-        .collection('trips')
-        .orderBy('start_time', descending: true)
-        .snapshots()
-        .map((snapshot) {
-      return snapshot.docs.map((doc) => TripModel.fromFirestore(doc)).toList();
-    });
+  /// Get all trips from local Hive storage, sorted by start time descending.
+  Future<List<DriveSession>> getTripsList(String vin) async {
+    final trips = _tripBox.values
+        .where((trip) => trip.vin == vin || trip.vin == null)
+        .toList();
+    trips.sort((a, b) => b.startTime.compareTo(a.startTime));
+    return trips;
   }
 
-  Future<List<TripModel>> getTripsList(String vin) async {
-    final snapshot = await _firestore
-        .collection('vehicles')
-        .doc(vin)
-        .collection('trips')
-        .orderBy('start_time', descending: true)
-        .get();
-    return snapshot.docs.map((doc) => TripModel.fromFirestore(doc)).toList();
+  /// Get all trips as a stream (emits current list when called).
+  Stream<List<DriveSession>> getTripsStream(String vin) async* {
+    yield await getTripsList(vin);
   }
 }

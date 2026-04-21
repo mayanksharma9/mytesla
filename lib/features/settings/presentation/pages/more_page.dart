@@ -1,17 +1,34 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../../../../core/theme/volt_colors.dart';
 import '../../../auth/presentation/bloc/auth_bloc.dart';
 import 'dart:ui';
 
-class MorePage extends StatelessWidget {
+class MorePage extends StatefulWidget {
   const MorePage({super.key});
+
+  @override
+  State<MorePage> createState() => _MorePageState();
+}
+
+class _MorePageState extends State<MorePage> {
+  String _version = '';
+
+  @override
+  void initState() {
+    super.initState();
+    PackageInfo.fromPlatform().then((info) {
+      if (mounted) setState(() => _version = info.version);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final versionLabel = _version.isNotEmpty ? 'v$_version' : '';
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -44,129 +61,144 @@ class MorePage extends StatelessWidget {
           final profile = state.userProfile;
           
           return SingleChildScrollView(
-            padding: const EdgeInsets.only(top: 100, left: 24, right: 24, bottom: 120),
+            padding: const EdgeInsets.only(top: 96, left: 20, right: 20, bottom: 100),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // Profile Section
                 Container(
-                  padding: const EdgeInsets.all(24),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                   decoration: BoxDecoration(
-                    color: isDark ? VoltColors.surfaceContainer : VoltColors.surfaceContainerLowest,
-                    borderRadius: BorderRadius.circular(32),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.03),
-                        blurRadius: 40,
-                        offset: const Offset(0, 20),
-                      )
-                    ],
+                    color: isDark ? VoltColors.surfaceElevatedDark : VoltColors.surfaceContainerLowest,
+                    borderRadius: BorderRadius.circular(20),
                   ),
                   child: Row(
                     children: [
                       CircleAvatar(
-                        radius: 40,
+                        radius: 26,
                         backgroundColor: VoltColors.surfaceContainerHigh,
                         backgroundImage: profile?.profileImageUrl != null
                             ? NetworkImage(profile!.profileImageUrl!)
                             : null,
                         child: profile?.profileImageUrl == null
-                            ? const Icon(Icons.person, color: VoltColors.primary, size: 40)
+                            ? const Icon(Icons.person, color: VoltColors.primary, size: 26)
                             : null,
                       ),
-                      const SizedBox(width: 20),
+                      const SizedBox(width: 14),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
                               profile?.fullName ?? 'Tesla User',
-                              style: theme.textTheme.headlineSmall?.copyWith(
+                              style: theme.textTheme.titleMedium?.copyWith(
                                 fontWeight: FontWeight.w800,
-                                fontSize: 20,
+                                fontSize: 16,
                               ),
                             ),
-                            const SizedBox(height: 4),
+                            const SizedBox(height: 2),
                             Text(
                               profile?.email ?? 'Sign in to see details',
-                              style: theme.textTheme.labelMedium?.copyWith(
+                              style: theme.textTheme.bodySmall?.copyWith(
                                 color: VoltColors.onSurfaceVariant,
-                                fontWeight: FontWeight.bold,
+                                fontWeight: FontWeight.w500,
                               ),
                             ),
                           ],
                         ),
                       ),
                       Container(
-                        padding: const EdgeInsets.all(12),
+                        padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
                           color: VoltColors.primary.withOpacity(0.1),
                           shape: BoxShape.circle,
                         ),
-                        child: const Icon(Icons.edit, color: VoltColors.primary, size: 20),
-                      )
+                        child: const Icon(Icons.edit, color: VoltColors.primary, size: 16),
+                      ),
                     ],
                   ),
                 ),
 
-                const SizedBox(height: 32),
+                const SizedBox(height: 24),
 
-                _Label('AIRCRAFT & ENERGY'),
-                const SizedBox(height: 16),
+                _Label('ANALYTICS'),
+                const SizedBox(height: 8),
                 _SettingsCard(
                   items: [
                     _SettingsItem(Icons.analytics, 'Energy Analytics', 'Insights & Health', onTab: () => context.push('/more/analytics')),
-                    _SettingsItem(Icons.history, 'Charging History', 'View past sessions', onTab: () => context.push('/more/charging-history')),
-                    _SettingsItem(Icons.map, 'Trip History', 'View recorded drives', onTab: () => context.push('/more/trips')),
-                    _SettingsItem(Icons.ev_station, 'Charging Guide', 'Optimal practices'),
+                    _SettingsItem(Icons.attach_money, 'Cost Analytics', 'Charging cost & savings', onTab: () => context.push('/more/cost-analytics')),
+                    _SettingsItem(Icons.battery_alert, 'Phantom Drain', 'Vampire drain tracking', onTab: () => context.push('/more/drain')),
                   ],
                 ),
 
-                const SizedBox(height: 32),
+                const SizedBox(height: 20),
+
+                _Label('HISTORY'),
+                const SizedBox(height: 8),
+                _SettingsCard(
+                  items: [
+                    _SettingsItem(Icons.history, 'Charging History', 'View past sessions', onTab: () => context.push('/more/charging-history')),
+                    _SettingsItem(Icons.map, 'Trip History', 'View recorded drives', onTab: () => context.push('/more/trips')),
+                    _SettingsItem(Icons.ev_station, 'Nearby Superchargers', 'Find available chargers', onTab: () => context.push('/more/nearby-superchargers')),
+                  ],
+                ),
+
+                const SizedBox(height: 20),
+
+                _Label('AUTOMATION'),
+                const SizedBox(height: 8),
+                _SettingsCard(
+                  items: [
+                    _SettingsItem(Icons.schedule, 'Automations', 'Scheduled charging & climate', onTab: () => context.push('/more/automations')),
+                    _SettingsItem(Icons.build_circle, 'Maintenance', 'Service reminders & tracker', onTab: () => context.push('/more/maintenance')),
+                  ],
+                ),
+
+                const SizedBox(height: 20),
 
                 _Label('SECURITY & SYSTEM'),
-                const SizedBox(height: 16),
+                const SizedBox(height: 8),
                 _SettingsCard(
                   items: [
                     _SettingsItem(Icons.security, 'Security & Privacy', 'FaceID, Key Management', onTab: () => context.push('/more/security')),
-                    _SettingsItem(Icons.notifications_none, 'Notifications', 'App & Vehicle alerts'),
+                    _SettingsItem(Icons.notifications_none, 'Notifications', 'App & Vehicle alerts', onTab: () => context.push('/more/notifications')),
                     _SettingsItem(Icons.language, 'Units & Language', 'English (US), Imperial'),
                   ],
                 ),
 
-                const SizedBox(height: 32),
+                const SizedBox(height: 20),
 
                 _Label('APPLICATION'),
-                const SizedBox(height: 16),
+                const SizedBox(height: 8),
                 _SettingsCard(
                   items: [
-                    _SettingsItem(Icons.info_outline, 'Software Version', 'v1.4.2 (Luxe Build)'),
+                    _SettingsItem(Icons.info_outline, 'Software Version', versionLabel),
                     _SettingsItem(Icons.help_outline, 'Help & Support', 'FAQs, Contact us'),
                     _SettingsItem(Icons.feedback, 'Submit Feedback', 'Shape our future'),
                   ],
                 ),
 
-                const SizedBox(height: 48),
+                const SizedBox(height: 32),
 
                 Center(
                   child: TextButton.icon(
                     onPressed: () => context.read<AuthBloc>().add(LogoutRequested()),
-                    icon: const Icon(Icons.logout, size: 18),
-                    label: const Text('SIGN OUT', style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 1.5)),
+                    icon: const Icon(Icons.logout, size: 16),
+                    label: const Text('SIGN OUT', style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 1.5, fontSize: 13)),
                     style: TextButton.styleFrom(
                       foregroundColor: VoltColors.error,
-                      padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
+                      padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
                       backgroundColor: VoltColors.error.withOpacity(0.05),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                     ),
                   ),
                 ),
-                
-                const SizedBox(height: 24),
+
+                const SizedBox(height: 16),
                 Center(
                   child: Text(
-                    'VOLTRIDE PREMIUM v1.4.2',
-                    style: TextStyle(color: VoltColors.outline, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 2),
+                    _version.isNotEmpty ? 'VOLTRIDE PREMIUM v$_version' : 'VOLTRIDE PREMIUM',
+                    style: const TextStyle(color: VoltColors.outline, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 2),
                   ),
                 ),
               ],
@@ -186,34 +218,82 @@ class _SettingsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      decoration: BoxDecoration(
-        color: isDark ? VoltColors.surfaceContainer : VoltColors.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(24),
+    final divider = Divider(
+      height: 1,
+      thickness: 1,
+      color: isDark ? Colors.white10 : Colors.black.withOpacity(0.06),
+      indent: 52,
+      endIndent: 0,
+    );
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: ColoredBox(
+        color: isDark ? VoltColors.surfaceElevatedDark : VoltColors.surfaceContainerLowest,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (int i = 0; i < items.length; i++) ...[
+              if (i > 0) divider,
+              _SettingsTile(item: items[i], isDark: isDark),
+            ],
+          ],
+        ),
       ),
-      child: ListView.separated(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        itemCount: items.length,
-        separatorBuilder: (context, index) => Divider(height: 1, color: isDark ? Colors.white10 : Colors.black12, indent: 64),
-        itemBuilder: (context, index) {
-          final item = items[index];
-          return ListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-            leading: Container(
-              padding: const EdgeInsets.all(10),
+    );
+  }
+}
+
+class _SettingsTile extends StatelessWidget {
+  final _SettingsItem item;
+  final bool isDark;
+
+  const _SettingsTile({required this.item, required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: item.onTab,
+      borderRadius: BorderRadius.zero,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        child: Row(
+          children: [
+            Container(
+              width: 32,
+              height: 32,
               decoration: BoxDecoration(
                 color: isDark ? VoltColors.backgroundDark : VoltColors.surfaceContainerLow,
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(9),
               ),
-              child: Icon(item.icon, color: VoltColors.onSurfaceVariant, size: 20),
+              child: Icon(item.icon, color: VoltColors.onSurfaceVariant, size: 17),
             ),
-            title: Text(item.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-            subtitle: Text(item.subtitle, style: TextStyle(color: VoltColors.onSurfaceVariant, fontSize: 12)),
-            trailing: Icon(Icons.chevron_right, color: VoltColors.onSurfaceVariant, size: 20),
-            onTap: item.onTab,
-          );
-        },
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    item.title,
+                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, height: 1.2),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    item.subtitle,
+                    style: const TextStyle(
+                      color: VoltColors.onSurfaceVariant,
+                      fontSize: 11,
+                      height: 1.2,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (item.onTab != null)
+              const Icon(Icons.chevron_right, color: VoltColors.onSurfaceVariant, size: 18),
+          ],
+        ),
       ),
     );
   }

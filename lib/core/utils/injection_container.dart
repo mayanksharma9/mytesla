@@ -1,9 +1,11 @@
 import 'package:get_it/get_it.dart';
 import 'package:dio/dio.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:voltride/features/dashboard/data/models/tesla_models.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:voltride/core/network/tesla_api_client.dart';
+import 'package:voltride/core/services/firestore_telemetry_service.dart';
 import 'package:voltride/features/auth/domain/auth_repository.dart';
 import 'package:voltride/features/auth/data/auth_repository_impl.dart';
 import 'package:voltride/features/auth/presentation/bloc/auth_bloc.dart';
@@ -18,7 +20,7 @@ import 'package:voltride/features/charging/domain/charging_repository.dart';
 import 'package:voltride/features/charging/data/repositories/charging_repository_impl.dart';
 import 'package:voltride/features/dashboard/data/services/telemetry_analytics_service.dart';
 import 'package:voltride/features/telemetry/data/repositories/trip_repository.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:voltride/features/telemetry/data/repositories/charge_session_repository.dart';
 import 'package:voltride/features/telemetry/domain/repositories/telemetry_repository.dart';
 import 'package:voltride/features/telemetry/data/repositories/telemetry_repository_impl.dart';
 import 'package:voltride/features/auth/domain/security_repository.dart';
@@ -31,17 +33,15 @@ Future<void> init() async {
   // BLoCs
   sl.registerLazySingleton(() => AuthBloc(sl(), sl()));
   sl.registerLazySingleton(() => VehicleBloc(sl(), sl(), sl(), sl(), sl()));
-  sl.registerLazySingleton(() => ChargingBloc(sl()));
+  sl.registerLazySingleton(() => ChargingBloc(sl(), sl<ChargeSessionRepository>()));
   sl.registerLazySingleton(() => TelemetryBloc(sl()));
 
   // Repositories
   sl.registerLazySingleton<AuthRepository>(() => AuthRepositoryImpl(sl(), sl(), sl()));
   sl.registerLazySingleton<SecurityRepository>(() => SecurityRepositoryImpl(sl()));
   
-  // Choose between Production and Mock repository
   sl.registerLazySingleton<VehicleRepository>(() => VehicleRepositoryImpl(
     sl(), // apiClient
-    sl(), // firestore
     sl<Box<BatterySnapshot>>(instanceName: 'battery_snapshots'), // batteryBox
     sl<Box<DriveSession>>(instanceName: 'trip_sessions'), // tripBox
     sl<Box<ChargeSession>>(instanceName: 'charge_sessions'), // chargeBox
@@ -52,20 +52,25 @@ Future<void> init() async {
   sl.registerLazySingleton<TelemetryRepository>(() => TelemetryRepositoryImpl(
     sl(), 
     sl(),
-    sl(),
     sl<Box<DriveSession>>(instanceName: 'trip_sessions'),
     sl<Box<ChargeSession>>(instanceName: 'charge_sessions'),
   ));
-  sl.registerLazySingleton<TripRepository>(() => TripRepository(sl()));
+  sl.registerLazySingleton<TripRepository>(() => TripRepository(
+    sl<Box<DriveSession>>(instanceName: 'trip_sessions'),
+  ));
+  sl.registerLazySingleton<ChargeSessionRepository>(() => ChargeSessionRepository(
+    sl<Box<ChargeSession>>(instanceName: 'charge_sessions'),
+  ));
 
   // API Client
   sl.registerLazySingleton(() => TeslaApiClient(sl(), sl(), sl()));
 
   // Services
   sl.registerLazySingleton(() => TelemetryAnalyticsService());
-  sl.registerLazySingleton(() => VehicleDataService(sl(), sl()));
+  sl.registerLazySingleton(() => VehicleDataService(sl()));
   sl.registerLazySingleton(() => TripDetectionService(sl()));
   sl.registerLazySingleton(() => IntelligenceEngine(sl()));
+  sl.registerLazySingleton(() => FirestoreTelemetryService(sl()));
 
   // External
   sl.registerLazySingleton(() => Dio());

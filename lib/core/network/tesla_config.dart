@@ -40,6 +40,10 @@ class TeslaConfig {
   // URL of our custom TVCP signing proxy backend (Shelf/Cloud Run)
   static String get proxyUrl => dotenv.env['TESLA_PROXY_URL'] ?? 'http://10.0.2.2:8081';
 
+  // Hostname for Fleet Telemetry registration (no https://, e.g. voltride-proxy-xxxx-uc.a.run.app)
+  // Set this after deploying to Cloud Run and then re-build the app.
+  static String? get fleetTelemetryHostname => dotenv.env['FLEET_TELEMETRY_HOSTNAME'];
+
   // Audience for Fleet API
   static const String audience = 'https://fleet-api.prd.na.vn.cloud.tesla.com';
 }

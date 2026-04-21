@@ -19,6 +19,8 @@ class TripDetectionService {
   DateTime? _chargeStartTime;
   double? _chargeStartSoc;
   double? _chargeStartRange;
+  final List<double> _chargePowerReadings = [];
+  final List<double> _chargeSocReadings = [];
 
   TripDetectionService(this._telemetryRepository);
 
@@ -33,7 +35,7 @@ class TripDetectionService {
     final currentShiftState = driveState.shiftState ?? 'P';
     final currentOdometer = vehicleState.odometer;
     final currentSoc = chargeState.batteryLevel.toDouble();
-    final currentChargingState = chargeState.chargingState ?? 'Disconnected';
+    final currentChargingState = chargeState.chargingState;
 
     // --- 1. Trip Detection ---
     if (_lastShiftState == 'P' && (currentShiftState == 'D' || currentShiftState == 'R')) {
@@ -53,6 +55,14 @@ class TripDetectionService {
     }
     if (_lastChargingState == 'Charging' && currentChargingState != 'Charging') {
       await _endCharging(vin, data);
+    }
+    // Sample power curve while charging is active
+    if (currentChargingState == 'Charging' && chargeState.chargerPower != null) {
+      final kw = chargeState.chargerPower!.toDouble();
+      if (kw > 0) {
+        _chargePowerReadings.add(kw);
+        _chargeSocReadings.add(currentSoc);
+      }
     }
     _lastChargingState = currentChargingState;
   }
@@ -103,6 +113,8 @@ class TripDetectionService {
     _chargeStartTime = DateTime.now();
     _chargeStartSoc = soc;
     _chargeStartRange = range;
+    _chargePowerReadings.clear();
+    _chargeSocReadings.clear();
   }
 
   Future<void> _endCharging(String vin, TeslaVehicleData data) async {
@@ -133,6 +145,8 @@ class TripDetectionService {
       chargerPower: chargeState.chargerPower?.toDouble() ?? 0.0,
       fastChargerType: chargeState.fastChargerType,
       connChargeType: chargeState.connChargeType,
+      powerCurve: List<double>.from(_chargePowerReadings),
+      socCurve: List<double>.from(_chargeSocReadings),
     );
 
     debugPrint('TripDetectionService: Charging session completed! Added: ${chargeState.chargeEnergyAdded} kWh');
@@ -141,6 +155,10 @@ class TripDetectionService {
   }
 
   void _resetCharging() {
-    _chargeStartTime = null; _chargeStartSoc = null; _chargeStartRange = null;
+    _chargeStartTime = null;
+    _chargeStartSoc = null;
+    _chargeStartRange = null;
+    _chargePowerReadings.clear();
+    _chargeSocReadings.clear();
   }
 }

@@ -1,5 +1,6 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:convert';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import '../../domain/vehicle.dart';
 import '../../domain/vehicle_repository.dart';
 import 'package:voltride/features/dashboard/domain/tesla_product.dart' as domain;
@@ -10,7 +11,6 @@ import 'package:voltride/features/telemetry/data/services/trip_detection_service
 
 class VehicleRepositoryImpl implements VehicleRepository {
   final TeslaApiClient _apiClient;
-  final FirebaseFirestore _firestore;
   
   // Hive Boxes
   final Box<BatterySnapshot> _batteryBox;
@@ -21,13 +21,15 @@ class VehicleRepositoryImpl implements VehicleRepository {
 
   VehicleRepositoryImpl(
     this._apiClient, 
-    this._firestore,
     this._batteryBox,
     this._tripBox,
     this._chargeBox,
     this._vehicleCacheBox,
     this._tripDetectionService,
   );
+
+  /// Returns the Hive box used for caching complete vehicle data JSON.
+  Box get _vehicleDataCacheBox => Hive.box('vehicle_data_cache');
 
   @override
   Future<List<Vehicle>> getVehicles() async {
@@ -40,26 +42,34 @@ class VehicleRepositoryImpl implements VehicleRepository {
   }
 
   @override
-  Future<Vehicle> getVehicleData(String vehicleId) async {
+  Future<Vehicle> getVehicleData(String vehicleId, [int retryCount = 0]) async {
     try {
       final dataResponse = await _apiClient.getVehicleData(vehicleId);
       final vehiclesResponse = await _apiClient.getVehicles();
-      
+
       final teslaVehicle = vehiclesResponse.response.firstWhere((v) => v.id == vehicleId);
       final vehicle = _mapTeslaVehicleDataToDomain(teslaVehicle, dataResponse.response);
 
-      // Trigger Trip Detection processing
-      await _tripDetectionService.processSnapshot(teslaVehicle.vin, dataResponse.response);
+      // Use VIN from data response if available, otherwise from vehicles list
+      final vin = dataResponse.response.vin ?? teslaVehicle.vin;
 
-      // Sync to Firestore for persistence and analytics
-      _syncToFirestore(vehicle);
+      // Trigger Trip Detection processing
+      await _tripDetectionService.processSnapshot(vin, dataResponse.response);
+
+      // Save BatterySnapshot locally for history/analytics
+      _saveBatterySnapshot(vehicle);
+
+      // Cache full vehicle state for cold-start
+      _cacheVehicleData(vehicle);
 
       return vehicle;
     } on DioException catch (e) {
-      if (e.response?.statusCode == 408) {
+      // 408 = vehicle is asleep; send wake and retry (max 3 attempts × 10s = ~30s)
+      if (e.response?.statusCode == 408 && retryCount < 3) {
+        debugPrint('VehicleRepository: Vehicle $vehicleId asleep (attempt ${retryCount + 1}/3). Waking...');
         await _apiClient.wakeUp(vehicleId);
-        await Future.delayed(const Duration(seconds: 5));
-        return getVehicleData(vehicleId);
+        await Future.delayed(const Duration(seconds: 10));
+        return getVehicleData(vehicleId, retryCount + 1);
       }
       rethrow;
     }
@@ -70,46 +80,127 @@ class VehicleRepositoryImpl implements VehicleRepository {
     await _apiClient.wakeUp(vehicleId);
   }
 
-  Future<void> _syncToFirestore(Vehicle vehicle) async {
+  /// Save a battery snapshot to Hive for local analytics.
+  void _saveBatterySnapshot(Vehicle vehicle) {
     try {
-      final vin = vehicle.vin;
-      // 1. Update Latest State
-      await _firestore.collection('vehicles').doc(vin).set({
-        ...vehicle.toJson(),
-        'last_sync': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-
-      // 2. Save local BatterySnapshot for local-first analytics
       final snapshot = BatterySnapshot(
         timestamp: DateTime.now(),
         batteryLevel: vehicle.batteryLevel,
         batteryRange: vehicle.batteryRange,
-        idealBatteryRange: vehicle.idealBatteryRange ?? 0.0,
+        idealBatteryRange: vehicle.idealBatteryRange,
         outsideTemp: vehicle.outsideTemp,
         batteryHeaterOn: vehicle.batteryHeaterOn,
         chargeLimitSoc: vehicle.chargeLimitSoc,
         shiftState: vehicle.shiftState ?? 'P',
         odometer: vehicle.odometer,
+        vin: vehicle.vin,
       );
-      await _batteryBox.add(snapshot);
+      _batteryBox.add(snapshot);
 
-      // 3. Add Telemetry Snapshot to Firestore for cloud sync
-      await _firestore.collection('vehicles').doc(vin).collection('telemetry_history').add({
-        'timestamp': FieldValue.serverTimestamp(),
-        'battery_level': vehicle.batteryLevel,
-        'battery_range': vehicle.batteryRange,
-        'odometer': vehicle.odometer,
-        'outside_temp': vehicle.outsideTemp,
-        'inside_temp': vehicle.insideTemp,
-        'shift_state': vehicle.shiftState,
-        'is_locked': vehicle.isLocked,
-        'is_climate_on': vehicle.isClimateOn,
-      });
-
-      print('VehicleRepository: Synced $vin to Firestore');
+      // Keep only the last 200 snapshots to avoid unbounded growth
+      if (_batteryBox.length > 200) {
+        final keysToDelete = _batteryBox.keys.take(_batteryBox.length - 200).toList();
+        _batteryBox.deleteAll(keysToDelete);
+      }
     } catch (e) {
-      print('VehicleRepository: Firestore sync failed: $e');
+      debugPrint('VehicleRepository: Failed to save battery snapshot: $e');
     }
+  }
+
+  /// Cache the full vehicle state as JSON in Hive for instant cold-start.
+  void _cacheVehicleData(Vehicle vehicle) {
+    try {
+      _vehicleDataCacheBox.put('last_vehicle_${vehicle.vin}', jsonEncode(vehicle.toJson()));
+      _vehicleDataCacheBox.put('last_sync_time', DateTime.now().toIso8601String());
+    } catch (e) {
+      debugPrint('VehicleRepository: Failed to cache vehicle data: $e');
+    }
+  }
+
+  /// Load cached vehicle data from Hive for cold-start display.
+  Vehicle? loadCachedVehicleData(String vin) {
+    try {
+      final cached = _vehicleDataCacheBox.get('last_vehicle_$vin');
+      if (cached != null && cached is String) {
+        final json = jsonDecode(cached) as Map<String, dynamic>;
+        return Vehicle(
+          id: json['id'] ?? '',
+          vehicleId: json['vehicle_id'] ?? '',
+          vin: json['vin'] ?? vin,
+          displayName: json['display_name'],
+          optionCodes: json['option_codes'],
+          color: json['color'],
+          state: json['state'] ?? 'offline',
+          batteryLevel: (json['battery_level'] as num?)?.toInt() ?? 0,
+          batteryRange: (json['battery_range'] as num?)?.toDouble() ?? 0.0,
+          idealBatteryRange: (json['ideal_battery_range'] as num?)?.toDouble() ?? 0.0,
+          estBatteryRange: (json['est_battery_range'] as num?)?.toDouble() ?? 0.0,
+          outsideTemp: (json['outside_temp'] as num?)?.toDouble() ?? 0.0,
+          insideTemp: (json['inside_temp'] as num?)?.toDouble() ?? 0.0,
+          odometer: (json['odometer'] as num?)?.toDouble() ?? 0.0,
+          isLocked: json['is_locked'] ?? true,
+          isClimateOn: json['is_climate_on'] ?? false,
+          isSentryModeOn: json['is_sentry_mode_on'] ?? false,
+          isValetModeOn: json['is_valet_mode_on'] ?? false,
+          batteryHeaterOn: json['battery_heater_on'] ?? false,
+          chargeLimitSoc: (json['charge_limit_soc'] as num?)?.toInt() ?? 80,
+          shiftState: json['shift_state'],
+          frontTrunkState: (json['front_trunk_state'] as num?)?.toInt() ?? 0,
+          rearTrunkState: (json['rear_trunk_state'] as num?)?.toInt() ?? 0,
+          chargingState: json['charging_state'] ?? 'Disconnected',
+          chargeRate: (json['charge_rate'] as num?)?.toDouble() ?? 0.0,
+          chargeEnergyAdded: (json['charge_energy_added'] as num?)?.toDouble() ?? 0.0,
+          timeToFullCharge: (json['time_to_full_charge'] as num?)?.toDouble() ?? 0.0,
+          chargerPower: (json['charger_power'] as num?)?.toDouble() ?? 0.0,
+          chargerVoltage: (json['charger_voltage'] as num?)?.toDouble() ?? 0.0,
+          chargerPhases: (json['charger_phases'] as num?)?.toInt() ?? 0,
+          fastChargerType: json['fast_charger_type'],
+          connChargeCable: json['conn_charge_cable'],
+          speed: (json['speed'] as num?)?.toDouble() ?? 0.0,
+          power: (json['power'] as num?)?.toDouble() ?? 0.0,
+          latitude: (json['latitude'] as num?)?.toDouble() ?? 0.0,
+          longitude: (json['longitude'] as num?)?.toDouble() ?? 0.0,
+          heading: (json['heading'] as num?)?.toInt() ?? 0,
+          driverTemp: (json['driver_temp'] as num?)?.toDouble(),
+          passengerTemp: (json['passenger_temp'] as num?)?.toDouble(),
+          fanStatus: (json['fan_status'] as num?)?.toInt() ?? 0,
+          seatHeaterLeft: (json['seat_heater_left'] as num?)?.toInt() ?? 0,
+          seatHeaterRight: (json['seat_heater_right'] as num?)?.toInt() ?? 0,
+          steeringWheelHeater: json['steering_wheel_heater'] as bool? ?? false,
+          frontDefrosterOn: json['front_defroster_on'] as bool? ?? false,
+          tpmsPressureFl: (json['tpms_pressure_fl'] as num?)?.toDouble(),
+          tpmsPressureFr: (json['tpms_pressure_fr'] as num?)?.toDouble(),
+          tpmsPressureRl: (json['tpms_pressure_rl'] as num?)?.toDouble(),
+          tpmsPressureRr: (json['tpms_pressure_rr'] as num?)?.toDouble(),
+          softwareVersion: json['software_version'] ?? '',
+          softwareUpdateStatus: json['software_update_status'],
+          softwareUpdateVersion: json['software_update_version'],
+          softwareUpdateProgress: (json['software_update_progress'] as num?)?.toInt() ?? 0,
+          climateKeeperMode: json['climate_keeper_mode'] ?? 'off',
+          scheduledChargingMode: json['scheduled_charging_mode'],
+          scheduledChargingStartTime: (json['scheduled_charging_start_time'] as num?)?.toInt(),
+          chargePortOpen: json['charge_port_open'] ?? false,
+          chargeCurrentRequest: (json['charge_current_request'] as num?)?.toInt() ?? 0,
+          useFahrenheit: json['use_fahrenheit'] ?? false,
+          useMiles: json['use_miles'] ?? false,
+          pressureUnit: json['pressure_unit'],
+        );
+      }
+    } catch (e) {
+      debugPrint('VehicleRepository: Failed to load cached vehicle data: $e');
+    }
+    return null;
+  }
+
+  /// Get the last sync time from the cache.
+  DateTime? getLastSyncTime() {
+    try {
+      final timeStr = _vehicleDataCacheBox.get('last_sync_time');
+      if (timeStr != null && timeStr is String) {
+        return DateTime.parse(timeStr);
+      }
+    } catch (_) {}
+    return null;
   }
 
   @override
@@ -135,8 +226,12 @@ class VehicleRepositoryImpl implements VehicleRepository {
           : () => _apiClient.autoConditioningStop(vehicleId));
 
   @override
-  Future<void> setSeatHeater(String vehicleId, int heater, int level) async => 
+  Future<void> setSeatHeater(String vehicleId, int heater, int level) async =>
       _executeWithWakeUp(vehicleId, () => _apiClient.remoteSeatHeaterRequest(vehicleId, heater, level));
+
+  @override
+  Future<void> setClimateKeeperMode(String vehicleId, String mode) async =>
+      _executeWithWakeUp(vehicleId, () => _apiClient.setClimateKeeperMode(vehicleId, mode));
 
   @override
   Future<void> setChargeLimit(String vehicleId, int limit) async => 
@@ -151,8 +246,20 @@ class VehicleRepositoryImpl implements VehicleRepository {
       _executeWithWakeUp(vehicleId, () => _apiClient.chargeStop(vehicleId));
 
   @override
-  Future<void> setChargingAmps(String vehicleId, int amps) async => 
+  Future<void> setChargingAmps(String vehicleId, int amps) async =>
       _executeWithWakeUp(vehicleId, () => _apiClient.setChargingAmps(vehicleId, amps));
+
+  @override
+  Future<void> openChargePort(String vehicleId) async =>
+      _executeWithWakeUp(vehicleId, () => _apiClient.chargePortDoorOpen(vehicleId));
+
+  @override
+  Future<void> closeChargePort(String vehicleId) async =>
+      _executeWithWakeUp(vehicleId, () => _apiClient.chargePortDoorClose(vehicleId));
+
+  @override
+  Future<void> setScheduledCharging(String vehicleId, bool enable, {int? startTime}) async =>
+      _executeWithWakeUp(vehicleId, () => _apiClient.setScheduledCharging(vehicleId, enable, startTime: startTime));
 
   @override
   Future<void> flashLights(String vehicleId) async => 
@@ -219,7 +326,7 @@ class VehicleRepositoryImpl implements VehicleRepository {
       await _vehicleCacheBox.put(vin, specs);
       return specs;
     } catch (e) {
-      print('VehicleRepository: Failed to fetch specs: $e');
+      debugPrint('VehicleRepository: Failed to fetch specs: $e');
       rethrow;
     }
   }
@@ -244,7 +351,7 @@ class VehicleRepositoryImpl implements VehicleRepository {
       
       await _vehicleCacheBox.put(vin, newCache);
     } catch (e) {
-      print('VehicleRepository: Failed to sync warranty: $e');
+      debugPrint('VehicleRepository: Failed to sync warranty: $e');
     }
   }
 
@@ -271,17 +378,67 @@ class VehicleRepositoryImpl implements VehicleRepository {
 
   @override
   Future<List<BatterySnapshot>> getBatteryHistory(String vin) async {
-    return _batteryBox.values.where((s) => true).toList(); // Filtering by VIN logic here if multi-vehicle
+    final all = _batteryBox.values.toList();
+    // Filter by VIN for newer snapshots; fall back to all for legacy entries (null vin).
+    final filtered = all.where((s) => s.vin == null || s.vin == vin).toList();
+    filtered.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    return filtered;
   }
 
   @override
   Future<List<DriveSession>> getTripHistory(String vin) async {
-    return _tripBox.values.toList();
+    // Filter by VIN when present; fall back to all sessions for legacy entries.
+    final all = _tripBox.values.toList();
+    final filtered = all.where((s) => s.vin == null || s.vin == vin).toList();
+    filtered.sort((a, b) => b.startTime.compareTo(a.startTime));
+    return filtered;
   }
 
   @override
   Future<List<ChargeSession>> getChargeHistoryLocal(String vin) async {
     return _chargeBox.values.toList();
+  }
+
+  @override
+  Future<void> configureFleetTelemetry(String vehicleId, String hostname) async {
+    // Fields pushed at high frequency for real-time UI updates
+    final config = {
+      'hostname': hostname,
+      'port': 443,
+      'tls': true,
+      'fields': {
+        'BatteryLevel': {'interval_seconds': 10},
+        'Soc': {'interval_seconds': 10},
+        'ChargingState': {'interval_seconds': 5},
+        'ChargerPower': {'interval_seconds': 5},
+        'ChargeRate': {'interval_seconds': 5},
+        'VehicleSpeed': {'interval_seconds': 5},
+        'Gear': {'interval_seconds': 5},
+        'Locked': {'interval_seconds': 30},
+        'SentryMode': {'interval_seconds': 30},
+        'ClimateKeeperMode': {'interval_seconds': 30},
+        'InsideTemp': {'interval_seconds': 15},
+        'OutsideTemp': {'interval_seconds': 60},
+        'Latitude': {'interval_seconds': 5},
+        'Longitude': {'interval_seconds': 5},
+        'Heading': {'interval_seconds': 5},
+        'Odometer': {'interval_seconds': 30},
+        'ACChargingEnergyIn': {'interval_seconds': 30},
+        'DCChargingEnergyIn': {'interval_seconds': 30},
+        'TimeToFullCharge': {'interval_seconds': 30},
+        'TpmsPressureFl': {'interval_seconds': 120},
+        'TpmsPressureFr': {'interval_seconds': 120},
+        'TpmsPressureRl': {'interval_seconds': 120},
+        'TpmsPressureRr': {'interval_seconds': 120},
+      },
+    };
+    try {
+      await _apiClient.configureFleetTelemetry(vehicleId, config);
+      debugPrint('VehicleRepository: Fleet Telemetry configured → $hostname');
+    } catch (e) {
+      debugPrint('VehicleRepository: configureFleetTelemetry failed: $e');
+      rethrow;
+    }
   }
 
   /// Helper to ensure vehicle is awake before sending a command.
@@ -291,7 +448,7 @@ class VehicleRepositoryImpl implements VehicleRepository {
     } on DioException catch (e) {
       // 408 means vehicle is asleep or command timed out
       if (e.response?.statusCode == 408 || e.response?.statusCode == 405) {
-        print('VehicleRepository: Vehicle $vehicleId is asleep. Waking up...');
+        debugPrint('VehicleRepository: Vehicle $vehicleId is asleep. Waking up...');
         await _apiClient.wakeUp(vehicleId);
         
         // Poll for 'online' status (max 60 seconds)
@@ -301,17 +458,17 @@ class VehicleRepositoryImpl implements VehicleRepository {
           final v = vehicles.response.firstWhere((v) => v.id == vehicleId);
           
           if (v.state == 'online') {
-            print('VehicleRepository: Vehicle $vehicleId is now online. Retrying command...');
+            debugPrint('VehicleRepository: Vehicle $vehicleId is now online. Retrying command...');
             return await action();
           }
-          print('VehicleRepository: Still waiting for $vehicleId to wake up (attempt ${i + 1})...');
+          debugPrint('VehicleRepository: Still waiting for $vehicleId to wake up (attempt ${i + 1})...');
         }
         throw Exception('Vehicle failed to wake up in time.');
       }
       
       // 429 means Rate Limit - wait a bit and retry once
       if (e.response?.statusCode == 429) {
-        print('VehicleRepository: Rate limited (429). Retrying in 2 seconds...');
+        debugPrint('VehicleRepository: Rate limited (429). Retrying in 2 seconds...');
         await Future.delayed(const Duration(seconds: 2));
         return await action();
       }
@@ -322,11 +479,23 @@ class VehicleRepositoryImpl implements VehicleRepository {
 
   Vehicle _mapBasicTeslaVehicleToDomain(TeslaVehicle tesla) {
     try {
-      print('Mapping basic vehicle: ${tesla.id}');
+      debugPrint('Mapping basic vehicle: ${tesla.id}');
       
-      // Try to find last known snapshot for this VIN to avoid showing 0s
+      // Try to load cached vehicle data first for better cold-start experience
+      final cached = loadCachedVehicleData(tesla.vin);
+      if (cached != null) {
+        // Return cached data with updated state from the vehicle list
+        return cached.copyWith(
+          id: tesla.id,
+          vehicleId: tesla.vehicleId.toString(),
+          state: tesla.state,
+          displayName: tesla.displayName,
+        );
+      }
+
+      // Fallback to last battery snapshot
       final lastSnapshot = _batteryBox.values.lastWhere(
-        (s) => true, // In a multi-VIN world, we'd filter by VIN
+        (s) => true,
         orElse: () => BatterySnapshot(
           timestamp: DateTime.now(),
           batteryLevel: 0,
@@ -340,8 +509,6 @@ class VehicleRepositoryImpl implements VehicleRepository {
         ),
       );
 
-      final cache = _vehicleCacheBox.get(tesla.vin);
-
       return Vehicle(
         id: tesla.id,
         vehicleId: tesla.vehicleId.toString(),
@@ -354,7 +521,7 @@ class VehicleRepositoryImpl implements VehicleRepository {
         batteryRange: lastSnapshot.batteryRange,
         idealBatteryRange: lastSnapshot.idealBatteryRange,
         outsideTemp: lastSnapshot.outsideTemp,
-        insideTemp: lastSnapshot.outsideTemp, // fallback
+        insideTemp: 0.0,
         odometer: lastSnapshot.odometer,
         isLocked: true, 
         isClimateOn: false,
@@ -367,14 +534,14 @@ class VehicleRepositoryImpl implements VehicleRepository {
         rearTrunkState: 0,
       );
     } catch (e) {
-      print('Error mapping basic vehicle: $e');
+      debugPrint('Error mapping basic vehicle: $e');
       rethrow;
     }
   }
 
   Vehicle _mapTeslaVehicleDataToDomain(TeslaVehicle tesla, TeslaVehicleData data) {
     try {
-      print('Mapping detailed vehicle: ${tesla.id}');
+      debugPrint('Mapping detailed vehicle: ${tesla.id}');
       return Vehicle(
         id: tesla.id,
         vehicleId: tesla.vehicleId.toString(),
@@ -383,33 +550,68 @@ class VehicleRepositoryImpl implements VehicleRepository {
         optionCodes: tesla.optionCodes,
         color: tesla.color,
         state: tesla.state,
+        // Charge State
         batteryLevel: data.chargeState?.batteryLevel ?? 0,
         batteryRange: data.chargeState?.batteryRange ?? 0.0,
         idealBatteryRange: data.chargeState?.idealBatteryRange ?? 0.0,
+        estBatteryRange: data.chargeState?.estBatteryRange ?? 0.0,
+        chargeLimitSoc: data.chargeState?.chargeLimitSoc ?? 80,
+        chargingState: data.chargeState?.chargingState ?? 'Disconnected',
+        chargeRate: data.chargeState?.chargeRate ?? 0.0,
+        chargeEnergyAdded: data.chargeState?.chargeEnergyAdded ?? 0.0,
+        timeToFullCharge: data.chargeState?.timeToFullCharge ?? 0.0,
+        chargerPower: data.chargeState?.chargerPower?.toDouble() ?? 0.0,
+        chargerVoltage: data.chargeState?.chargerVoltage?.toDouble() ?? 0.0,
+        chargerPhases: data.chargeState?.chargerPhases ?? 0,
+        fastChargerType: data.chargeState?.fastChargerType,
+        connChargeCable: data.chargeState?.connChargeType,
+        batteryHeaterOn: data.chargeState?.batteryHeaterOn ?? false,
+        // Climate State
         outsideTemp: data.climateState?.outsideTemp ?? 0.0,
         insideTemp: data.climateState?.insideTemp ?? 0.0,
+        isClimateOn: data.climateState?.isClimateOn ?? false,
+        driverTemp: data.climateState?.driverTempSetting,
+        passengerTemp: data.climateState?.passengerTempSetting,
+        fanStatus: data.climateState?.fanStatus ?? 0,
+        seatHeaterLeft: data.climateState?.seatHeaterLeft ?? 0,
+        seatHeaterRight: data.climateState?.seatHeaterRight ?? 0,
+        steeringWheelHeater: data.climateState?.steeringWheelHeater ?? false,
+        frontDefrosterOn: data.climateState?.frontDefrosterOn ?? false,
+        climateKeeperMode: data.climateState?.climateKeeperMode ?? 'off',
+        // Vehicle State
         odometer: data.vehicleState?.odometer ?? 0.0,
         isLocked: data.vehicleState?.locked ?? true,
-        isClimateOn: data.climateState?.isClimateOn ?? false,
         isSentryModeOn: data.vehicleState?.sentryMode ?? false,
         isValetModeOn: data.vehicleState?.valetMode ?? false,
-        batteryHeaterOn: data.climateState?.batteryHeaterOn ?? false,
-        chargeLimitSoc: data.chargeState?.chargeLimitSoc ?? 80,
-        shiftState: data.driveState?.shiftState ?? 'P',
         frontTrunkState: data.vehicleState?.ft ?? 0,
         rearTrunkState: data.vehicleState?.rt ?? 0,
+        softwareVersion: data.vehicleState?.carVersion ?? '',
+        softwareUpdateStatus: data.vehicleState?.softwareUpdate?.status,
+        softwareUpdateVersion: data.vehicleState?.softwareUpdate?.version,
+        softwareUpdateProgress: data.vehicleState?.softwareUpdate?.installPerc ?? 0,
         tpmsPressureFl: data.vehicleState?.tpmsPressureFl,
         tpmsPressureFr: data.vehicleState?.tpmsPressureFr,
         tpmsPressureRl: data.vehicleState?.tpmsPressureRl,
         tpmsPressureRr: data.vehicleState?.tpmsPressureRr,
-        driverTemp: data.climateState?.driverTempSetting,
-        passengerTemp: data.climateState?.passengerTempSetting,
+        // Charging Extended
+        chargePortOpen: data.chargeState?.chargePortDoorOpen ?? false,
+        chargeCurrentRequest: data.chargeState?.chargeCurrentRequest ?? 0,
+        scheduledChargingMode: data.chargeState?.scheduledChargingMode,
+        scheduledChargingStartTime: data.chargeState?.scheduledChargingStartTime,
+        // Drive State
+        shiftState: data.driveState?.shiftState ?? 'P',
+        speed: data.driveState?.speed ?? 0.0,
+        power: data.driveState?.power.toDouble() ?? 0.0,
+        latitude: data.driveState?.latitude ?? 0.0,
+        longitude: data.driveState?.longitude ?? 0.0,
+        heading: data.driveState?.heading ?? 0,
+        // GUI Settings / Units
         useFahrenheit: data.guiSettings?.temperatureUnits == 'F',
         useMiles: data.guiSettings?.distanceUnits != 'km/hr',
         pressureUnit: data.guiSettings?.pressureUnits ?? 'Psi',
       );
     } catch (e) {
-      print('Error mapping detailed vehicle: $e');
+      debugPrint('Error mapping detailed vehicle: $e');
       rethrow;
     }
   }

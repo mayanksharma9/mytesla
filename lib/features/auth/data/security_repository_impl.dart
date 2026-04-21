@@ -113,12 +113,11 @@ class SecurityRepositoryImpl implements SecurityRepository {
     final ecdh = ECDHBasicAgreement()..init(privateKey);
     final agreement = ecdh.calculateAgreement(peerPubKey);
 
+    // Tesla TVCP shared secret = raw 32-byte X-coordinate of the ECDH result.
+    // The HMAC key is then derived as HMAC-SHA256(sharedSecret, "authenticated command").
+    // Do NOT hash with SHA1 — that was producing a wrong key.
     final xBytes = _encodeBigInt(agreement);
-    final paddedX = Uint8List(32)..setRange(32 - xBytes.length, 32, xBytes);
-
-    final digest = SHA1Digest();
-    final sharedKey = digest.process(paddedX);
-    return sharedKey.sublist(0, 16);
+    return Uint8List(32)..setRange(32 - xBytes.length, 32, xBytes);
   }
 
   // --- Helper Methods ---

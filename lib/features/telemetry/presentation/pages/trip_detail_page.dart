@@ -52,7 +52,7 @@ class TripDetailPage extends StatelessWidget {
             top: MediaQuery.of(context).padding.top + 16,
             left: 16,
             child: CircleAvatar(
-              backgroundColor: isDark ? VoltColors.surfaceContainer.withOpacity(0.8) : Colors.white.withOpacity(0.8),
+              backgroundColor: isDark ? VoltColors.surfaceElevatedDark.withOpacity(0.8) : Colors.white.withOpacity(0.8),
               child: IconButton(
                 icon: const Icon(Icons.arrow_back, color: Colors.white),
                 onPressed: () => Navigator.of(context).pop(),
@@ -68,7 +68,7 @@ class TripDetailPage extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                color: isDark ? VoltColors.surfaceContainer.withOpacity(0.85) : Colors.white.withOpacity(0.9),
+                color: isDark ? VoltColors.surfaceElevatedDark.withOpacity(0.85) : Colors.white.withOpacity(0.9),
                 borderRadius: BorderRadius.circular(32),
                 border: Border.all(color: Colors.white.withOpacity(0.1)),
                 boxShadow: [

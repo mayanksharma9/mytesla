@@ -157,13 +157,14 @@ class BatterySnapshotAdapter extends TypeAdapter<BatterySnapshot> {
       chargeLimitSoc: fields[6] as int,
       shiftState: fields[7] as String,
       odometer: fields[8] as double,
+      vin: fields[9] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, BatterySnapshot obj) {
     writer
-      ..writeByte(9)
+      ..writeByte(10)
       ..writeByte(0)
       ..write(obj.timestamp)
       ..writeByte(1)
@@ -181,7 +182,9 @@ class BatterySnapshotAdapter extends TypeAdapter<BatterySnapshot> {
       ..writeByte(7)
       ..write(obj.shiftState)
       ..writeByte(8)
-      ..write(obj.odometer);
+      ..write(obj.odometer)
+      ..writeByte(9)
+      ..write(obj.vin);
   }
 
   @override
@@ -219,13 +222,15 @@ class ChargeSessionAdapter extends TypeAdapter<ChargeSession> {
       fastChargerType: fields[10] as String?,
       connChargeType: fields[11] as String?,
       vin: fields[12] as String?,
+      powerCurve: (fields[13] as List).cast<double>(),
+      socCurve: (fields[14] as List).cast<double>(),
     );
   }
 
   @override
   void write(BinaryWriter writer, ChargeSession obj) {
     writer
-      ..writeByte(13)
+      ..writeByte(15)
       ..writeByte(0)
       ..write(obj.startTime)
       ..writeByte(1)
@@ -251,7 +256,11 @@ class ChargeSessionAdapter extends TypeAdapter<ChargeSession> {
       ..writeByte(11)
       ..write(obj.connChargeType)
       ..writeByte(12)
-      ..write(obj.vin);
+      ..write(obj.vin)
+      ..writeByte(13)
+      ..write(obj.powerCurve)
+      ..writeByte(14)
+      ..write(obj.socCurve);
   }
 
   @override
@@ -534,6 +543,7 @@ Map<String, dynamic> _$TeslaVehicleDataResponseToJson(
 
 TeslaVehicleData _$TeslaVehicleDataFromJson(Map<String, dynamic> json) =>
     TeslaVehicleData(
+      vin: json['vin'] as String?,
       chargeState: json['charge_state'] == null
           ? null
           : ChargeState.fromJson(json['charge_state'] as Map<String, dynamic>),
@@ -559,6 +569,7 @@ TeslaVehicleData _$TeslaVehicleDataFromJson(Map<String, dynamic> json) =>
 
 Map<String, dynamic> _$TeslaVehicleDataToJson(TeslaVehicleData instance) =>
     <String, dynamic>{
+      'vin': instance.vin,
       'charge_state': instance.chargeState,
       'climate_state': instance.climateState,
       'vehicle_state': instance.vehicleState,
@@ -614,6 +625,14 @@ ChargeState _$ChargeStateFromJson(Map<String, dynamic> json) => ChargeState(
       batteryHeaterOn: json['battery_heater_on'] as bool? ?? false,
       fastChargerType: _dynamicToString(json['fast_charger_type']),
       connChargeType: _dynamicToString(json['conn_charge_cable']),
+      scheduledChargingMode:
+          _dynamicToNullableString(json['scheduled_charging_mode']),
+      scheduledChargingStartTime:
+          _dynamicToNullableInt(json['scheduled_charging_start_time']),
+      scheduledDepartureTime:
+          _dynamicToNullableInt(json['scheduled_departure_time']),
+      chargePortDoorOpen: json['charge_port_door_open'] as bool?,
+      fastChargerPresent: json['fast_charger_present'] as bool?,
     );
 
 Map<String, dynamic> _$ChargeStateToJson(ChargeState instance) =>
@@ -635,6 +654,11 @@ Map<String, dynamic> _$ChargeStateToJson(ChargeState instance) =>
       'battery_heater_on': instance.batteryHeaterOn,
       'fast_charger_type': instance.fastChargerType,
       'conn_charge_cable': instance.connChargeType,
+      'scheduled_charging_mode': instance.scheduledChargingMode,
+      'scheduled_charging_start_time': instance.scheduledChargingStartTime,
+      'scheduled_departure_time': instance.scheduledDepartureTime,
+      'charge_port_door_open': instance.chargePortDoorOpen,
+      'fast_charger_present': instance.fastChargerPresent,
     };
 
 ClimateState _$ClimateStateFromJson(Map<String, dynamic> json) => ClimateState(
@@ -646,6 +670,15 @@ ClimateState _$ClimateStateFromJson(Map<String, dynamic> json) => ClimateState(
       batteryHeaterOn: json['battery_heater'] as bool? ?? false,
       fanStatus:
           json['fan_status'] == null ? 0 : _dynamicToInt(json['fan_status']),
+      seatHeaterLeft: json['seat_heater_left'] == null
+          ? 0
+          : _dynamicToInt(json['seat_heater_left']),
+      seatHeaterRight: json['seat_heater_right'] == null
+          ? 0
+          : _dynamicToInt(json['seat_heater_right']),
+      steeringWheelHeater: json['steering_wheel_heater'] as bool? ?? false,
+      frontDefrosterOn: json['front_defroster_on'] as bool? ?? false,
+      climateKeeperMode: _dynamicToNullableString(json['climate_keeper_mode']),
     );
 
 Map<String, dynamic> _$ClimateStateToJson(ClimateState instance) =>
@@ -657,6 +690,11 @@ Map<String, dynamic> _$ClimateStateToJson(ClimateState instance) =>
       'is_climate_on': instance.isClimateOn,
       'battery_heater': instance.batteryHeaterOn,
       'fan_status': instance.fanStatus,
+      'seat_heater_left': instance.seatHeaterLeft,
+      'seat_heater_right': instance.seatHeaterRight,
+      'steering_wheel_heater': instance.steeringWheelHeater,
+      'front_defroster_on': instance.frontDefrosterOn,
+      'climate_keeper_mode': instance.climateKeeperMode,
     };
 
 VehicleState _$VehicleStateFromJson(Map<String, dynamic> json) => VehicleState(
@@ -975,6 +1013,7 @@ BatterySnapshot _$BatterySnapshotFromJson(Map<String, dynamic> json) =>
       chargeLimitSoc: (json['chargeLimitSoc'] as num).toInt(),
       shiftState: json['shiftState'] as String,
       odometer: (json['odometer'] as num).toDouble(),
+      vin: json['vin'] as String?,
     );
 
 Map<String, dynamic> _$BatterySnapshotToJson(BatterySnapshot instance) =>
@@ -988,6 +1027,7 @@ Map<String, dynamic> _$BatterySnapshotToJson(BatterySnapshot instance) =>
       'chargeLimitSoc': instance.chargeLimitSoc,
       'shiftState': instance.shiftState,
       'odometer': instance.odometer,
+      'vin': instance.vin,
     };
 
 ChargeSession _$ChargeSessionFromJson(Map<String, dynamic> json) =>
@@ -1005,6 +1045,14 @@ ChargeSession _$ChargeSessionFromJson(Map<String, dynamic> json) =>
       fastChargerType: json['fastChargerType'] as String?,
       connChargeType: json['connChargeType'] as String?,
       vin: json['vin'] as String?,
+      powerCurve: (json['powerCurve'] as List<dynamic>?)
+              ?.map((e) => (e as num).toDouble())
+              .toList() ??
+          const [],
+      socCurve: (json['socCurve'] as List<dynamic>?)
+              ?.map((e) => (e as num).toDouble())
+              .toList() ??
+          const [],
     );
 
 Map<String, dynamic> _$ChargeSessionToJson(ChargeSession instance) =>
@@ -1022,6 +1070,8 @@ Map<String, dynamic> _$ChargeSessionToJson(ChargeSession instance) =>
       'fastChargerType': instance.fastChargerType,
       'connChargeType': instance.connChargeType,
       'vin': instance.vin,
+      'powerCurve': instance.powerCurve,
+      'socCurve': instance.socCurve,
     };
 
 DriveSession _$DriveSessionFromJson(Map<String, dynamic> json) => DriveSession(

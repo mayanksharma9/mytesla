@@ -130,7 +130,7 @@ class ControlsPage extends StatelessWidget {
                   width: double.infinity,
                   height: 240,
                   decoration: BoxDecoration(
-                    color: isDark ? VoltColors.surfaceContainer : VoltColors.surfaceContainerLowest,
+                    color: isDark ? VoltColors.surfaceElevatedDark : VoltColors.surfaceContainerLowest,
                     borderRadius: BorderRadius.circular(24),
                     image: const DecorationImage(
                       image: NetworkImage('https://lh3.googleusercontent.com/aida-public/AB6AXuDKF7u-oeunWl087g3YWDOHkx3a0wmvsvWb_e5cCshEH6rCLz5tZ6lRHUaVsCf7lVeZuEx_3XzjZy4IdCXuPgOVz9uz4w4tv70-uh6KFv6rZ9HNNiixXqHj7pq2fFG8NBKJsx9x7u0Bk3JFi6oZujE0-2xENB4v3ujiz0vGSs-ZspdbzE-IaLYKS-k_Xr2SCKOeFukEmoV1Fe2Wnl57_iCL29mOC6byIOQqHSOiq2YdHx1UZl0ZGS-D2D120iV2oqPRYW1dQEHU8diQ'),
@@ -209,7 +209,7 @@ class ControlsPage extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
-                    color: isDark ? VoltColors.surfaceContainer : VoltColors.surfaceContainerLowest,
+                    color: isDark ? VoltColors.surfaceElevatedDark : VoltColors.surfaceContainerLowest,
                     borderRadius: BorderRadius.circular(24),
                   ),
                   child: Column(
@@ -359,7 +359,7 @@ class _ActionBtn extends StatelessWidget {
       child: Container(
         height: 64,
         decoration: BoxDecoration(
-          color: isPrimary ? VoltColors.primary : (isDark ? VoltColors.surfaceContainer : VoltColors.surfaceContainerLowest),
+          color: isPrimary ? VoltColors.primary : (isDark ? VoltColors.surfaceElevatedDark : VoltColors.surfaceContainerLowest),
           borderRadius: BorderRadius.circular(32),
           border: isPrimary ? null : Border.all(color: isDark ? Colors.white10 : Colors.black12),
         ),

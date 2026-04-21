@@ -1,20 +1,18 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../network/tesla_api_client.dart';
-import '../../features/dashboard/domain/vehicle_repository.dart';
 import '../../features/dashboard/data/models/tesla_models.dart';
 
 class VehicleDataService extends ChangeNotifier with WidgetsBindingObserver {
   final TeslaApiClient _apiClient;
-  final VehicleRepository _repository;
-  
+
   Timer? _pollingTimer;
   bool _isPolling = false;
   DateTime? _lastSyncTime;
   String? _currentVehicleId;
   TeslaVehicleData? _latestData;
 
-  VehicleDataService(this._apiClient, this._repository) {
+  VehicleDataService(this._apiClient) {
     WidgetsBinding.instance.addObserver(this);
   }
 
@@ -54,27 +52,27 @@ class VehicleDataService extends ChangeNotifier with WidgetsBindingObserver {
     if (_currentVehicleId == null || !_isPolling) return;
 
     try {
-      debugPrint('VehicleDataService: Polling vehicle $_currentVehicleId...');
-      
-      // 1. Check if vehicle is online before heavy data fetch
-      // This is a lightweight call
+      debugPrint('VehicleDataService: Checking vehicle state for $_currentVehicleId...');
+
+      // Lightweight check — only used so the service can track online state.
+      // The VehicleBloc owns the authoritative periodic refresh via its own timer.
       final vehicles = await _apiClient.getVehicles();
-      final vehicle = vehicles.response.firstWhere((v) => v.id == _currentVehicleId);
-      
-      if (vehicle.state != 'online') {
-        debugPrint('VehicleDataService: Vehicle is ${vehicle.state}, skipping data fetch.');
+      final vehicle = vehicles.response.firstWhere(
+        (v) => v.id == _currentVehicleId,
+        orElse: () => vehicles.response.first,
+      );
+
+      if (vehicle.state != 'online' && vehicle.state != 'charging') {
+        debugPrint('VehicleDataService: Vehicle is ${vehicle.state}, skipping heavyweight fetch.');
         return;
       }
 
-      // 2. Fetch comprehensive data
+      // Keep a lightweight snapshot for callers that read latestData directly.
       final dataResponse = await _apiClient.getVehicleData(_currentVehicleId!);
       _latestData = dataResponse.response;
       _lastSyncTime = DateTime.now();
 
-      // 3. Update repository (this triggers Hive/Firestore sync)
-      await _repository.getVehicleData(_currentVehicleId!); 
-      
-      debugPrint('VehicleDataService: Sync complete at $_lastSyncTime');
+      debugPrint('VehicleDataService: Lightweight snapshot updated at $_lastSyncTime');
       notifyListeners();
     } catch (e) {
       debugPrint('VehicleDataService: Error during poll: $e');

@@ -2,6 +2,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:equatable/equatable.dart';
 import 'package:voltride/features/dashboard/data/models/tesla_models.dart';
 import 'package:voltride/features/charging/domain/charging_repository.dart';
+import 'package:voltride/features/telemetry/data/repositories/charge_session_repository.dart';
 
 // --- Events ---
 abstract class ChargingEvent extends Equatable {
@@ -41,10 +42,19 @@ class SelectStation extends ChargingEvent {
   List<Object?> get props => [station];
 }
 
+class LoadLocalSessions extends ChargingEvent {
+  final String vin;
+  const LoadLocalSessions(this.vin);
+
+  @override
+  List<Object?> get props => [vin];
+}
+
 // --- State ---
 class ChargingState extends Equatable {
   final List<ChargingLocation> stations;
   final List<ChargingHistoryEntry> history;
+  final List<ChargeSession> localSessions;
   final List<ChargingSessionInfo> businessSessions;
   final ChargingLocation? selectedStation;
   final ChargingTariff? currentTariff;
@@ -58,6 +68,7 @@ class ChargingState extends Equatable {
   const ChargingState({
     this.stations = const [],
     this.history = const [],
+    this.localSessions = const [],
     this.businessSessions = const [],
     this.selectedStation,
     this.currentTariff,
@@ -72,6 +83,7 @@ class ChargingState extends Equatable {
   ChargingState copyWith({
     List<ChargingLocation>? stations,
     List<ChargingHistoryEntry>? history,
+    List<ChargeSession>? localSessions,
     List<ChargingSessionInfo>? businessSessions,
     ChargingLocation? selectedStation,
     ChargingTariff? currentTariff,
@@ -85,6 +97,7 @@ class ChargingState extends Equatable {
     return ChargingState(
       stations: stations ?? this.stations,
       history: history ?? this.history,
+      localSessions: localSessions ?? this.localSessions,
       businessSessions: businessSessions ?? this.businessSessions,
       selectedStation: selectedStation ?? this.selectedStation,
       currentTariff: currentTariff ?? this.currentTariff,
@@ -101,6 +114,7 @@ class ChargingState extends Equatable {
   List<Object?> get props => [
         stations,
         history,
+        localSessions,
         businessSessions,
         selectedStation,
         currentTariff,
@@ -116,14 +130,16 @@ class ChargingState extends Equatable {
 // --- Bloc ---
 class ChargingBloc extends Bloc<ChargingEvent, ChargingState> {
   final ChargingRepository _repository;
+  final ChargeSessionRepository _localRepo;
 
-  ChargingBloc(this._repository) : super(const ChargingState()) {
+  ChargingBloc(this._repository, this._localRepo) : super(const ChargingState()) {
     on<FetchNearbyStations>(_onFetchNearbyStations);
     on<FetchChargingHistory>(_onFetchChargingHistory);
     on<LoadMoreChargingHistory>(_onLoadMoreChargingHistory);
     on<FetchBusinessSessions>(_onFetchBusinessSessions);
     on<DownloadInvoice>(_onDownloadInvoice);
     on<SelectStation>(_onSelectStation);
+    on<LoadLocalSessions>(_onLoadLocalSessions);
   }
 
   Future<void> _onFetchNearbyStations(FetchNearbyStations event, Emitter<ChargingState> emit) async {
@@ -199,6 +215,15 @@ class ChargingBloc extends Bloc<ChargingEvent, ChargingState> {
       emit(state.copyWith(currentTariff: tariff, isLoading: false));
     } catch (e) {
       emit(state.copyWith(isLoading: false, error: e.toString()));
+    }
+  }
+
+  Future<void> _onLoadLocalSessions(LoadLocalSessions event, Emitter<ChargingState> emit) async {
+    try {
+      final sessions = await _localRepo.getSessionsList(event.vin);
+      emit(state.copyWith(localSessions: sessions));
+    } catch (e) {
+      // Non-critical: local history is best-effort
     }
   }
 }

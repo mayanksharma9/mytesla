@@ -64,8 +64,21 @@ class TVCPSigner {
     if (!response.hasSessionInfo()) {
       throw Exception('RoutableMessage does not contain session info');
     }
-    
-    final info = SessionInfo.fromBuffer(response.sessionInfo);
+
+    final sessionInfoBytes = response.sessionInfo;
+
+    // The vehicle firmware sends Session_Info_Status at field 7 (wire type 0, varint),
+    // but our generated proto maps `status` to field 5. Check both to be safe.
+    final rawStatus = _scanVarintField(sessionInfoBytes, fieldNumber: 7);
+    if (rawStatus == Session_Info_Status.SESSION_INFO_STATUS_KEY_NOT_ON_WHITELIST.value) {
+      throw Exception(
+        'Key not on vehicle whitelist. '
+        'Open https://tesla.com/_ak/thedevelopersharma.com in the Tesla app '
+        'and tap your car to register the virtual key.',
+      );
+    }
+
+    final info = SessionInfo.fromBuffer(sessionInfoBytes);
     if (info.status == Session_Info_Status.SESSION_INFO_STATUS_KEY_NOT_ON_WHITELIST) {
       throw Exception('Key not on vehicle whitelist');
     }
@@ -91,6 +104,25 @@ class TVCPSigner {
       case 'actuate_trunk':
       case 'actuate_frunk':
         return Domain.DOMAIN_VEHICLE_SECURITY;
+      case 'auto_conditioning_start':
+      case 'auto_conditioning_stop':
+      case 'set_temps':
+      case 'set_climate_keeper_mode':
+      case 'remote_seat_heater_request':
+      case 'charge_start':
+      case 'charge_stop':
+      case 'set_charge_limit':
+      case 'set_charging_amps':
+      case 'charge_port_door_open':
+      case 'charge_port_door_close':
+      case 'set_scheduled_charging':
+      case 'set_scheduled_departure':
+      case 'honk_horn':
+      case 'flash_lights':
+      case 'set_sentry_mode':
+      case 'set_valet_mode':
+      case 'window_control':
+        return Domain.DOMAIN_INFOTAINMENT;
       default:
         return Domain.DOMAIN_INFOTAINMENT;
     }
@@ -233,6 +265,70 @@ class TVCPSigner {
         ).writeToBuffer();
         break;
 
+      case 'set_valet_mode':
+        domain = Domain.DOMAIN_INFOTAINMENT;
+        payloadBytes = CarServer.VehicleAction(
+          vehicleControlSetValetModeAction: CarServer.VehicleControlSetValetModeAction(
+            on: params['on'] ?? false,
+            password: params['password'] as String? ?? '',
+          ),
+        ).writeToBuffer();
+        break;
+
+      case 'set_climate_keeper_mode':
+        domain = Domain.DOMAIN_INFOTAINMENT;
+        final mode = params['climate_keeper_mode'] as String? ?? 'off';
+        CarServer.HvacClimateKeeperAction_ClimateKeeperAction_E keeperMode;
+        switch (mode) {
+          case 'dog':
+            keeperMode = CarServer.HvacClimateKeeperAction_ClimateKeeperAction_E.ClimateKeeperAction_Dog;
+            break;
+          case 'camp':
+            keeperMode = CarServer.HvacClimateKeeperAction_ClimateKeeperAction_E.ClimateKeeperAction_Camp;
+            break;
+          case 'on':
+            keeperMode = CarServer.HvacClimateKeeperAction_ClimateKeeperAction_E.ClimateKeeperAction_On;
+            break;
+          default:
+            keeperMode = CarServer.HvacClimateKeeperAction_ClimateKeeperAction_E.ClimateKeeperAction_Off;
+        }
+        payloadBytes = CarServer.VehicleAction(
+          hvacClimateKeeperAction: CarServer.HvacClimateKeeperAction(
+            climateKeeperAction: keeperMode,
+          ),
+        ).writeToBuffer();
+        break;
+
+      case 'window_control':
+        domain = Domain.DOMAIN_INFOTAINMENT;
+        final windowCmd = params['command'] as String? ?? 'vent';
+        payloadBytes = CarServer.VehicleAction(
+          vehicleControlWindowAction: windowCmd == 'close'
+              ? CarServer.VehicleControlWindowAction(close: Common.Void())
+              : CarServer.VehicleControlWindowAction(vent: Common.Void()),
+        ).writeToBuffer();
+        break;
+
+      case 'set_scheduled_charging':
+        domain = Domain.DOMAIN_INFOTAINMENT;
+        payloadBytes = CarServer.VehicleAction(
+          scheduledChargingAction: CarServer.ScheduledChargingAction(
+            enabled: params['enable'] as bool? ?? false,
+            chargingTime: params['time'] as int? ?? 0,
+          ),
+        ).writeToBuffer();
+        break;
+
+      case 'set_scheduled_departure':
+        domain = Domain.DOMAIN_INFOTAINMENT;
+        payloadBytes = CarServer.VehicleAction(
+          scheduledDepartureAction: CarServer.ScheduledDepartureAction(
+            enabled: params['enable'] as bool? ?? false,
+            departureTime: params['departure_time'] as int? ?? 0,
+          ),
+        ).writeToBuffer();
+        break;
+
       default:
         throw UnimplementedError('Command $commandName not yet supported for TVCP signed command in proxy');
     }
@@ -246,7 +342,7 @@ class TVCPSigner {
     // Prepare metadata
     session.counter += 1;
     final now = (DateTime.now().millisecondsSinceEpoch / 1000).round();
-    final expiresAt = now - session.clockDeltaSeconds! + 10; // expire in 10s
+    final expiresAt = now - session.clockDeltaSeconds! + 30; // 30s window in vehicle time
 
     final hmacData = HMAC_Personalized_Signature_Data(
       epoch: session.epoch,
@@ -330,5 +426,55 @@ class TVCPSigner {
     final data = ByteData.view(bytes.buffer);
     data.setUint32(0, value, Endian.big);
     return bytes;
+  }
+
+  /// Scans raw protobuf bytes for a varint field with the given field number.
+  /// Returns the varint value if found, or null if the field is absent.
+  /// Used to read fields that exist in the vehicle's wire format but are
+  /// assigned a different field number in our generated proto (e.g. status
+  /// is at field 7 in vehicle firmware but field 5 in our .pb.dart).
+  static int? _scanVarintField(List<int> bytes, {required int fieldNumber}) {
+    int i = 0;
+    while (i < bytes.length) {
+      // Read tag varint
+      int tagVal = 0, shift = 0;
+      while (i < bytes.length) {
+        final b = bytes[i++];
+        tagVal |= (b & 0x7F) << shift;
+        if ((b & 0x80) == 0) break;
+        shift += 7;
+      }
+      final fn = tagVal >> 3;
+      final wt = tagVal & 7;
+
+      if (wt == 0) {
+        // varint field
+        int val = 0; shift = 0;
+        while (i < bytes.length) {
+          final b = bytes[i++];
+          val |= (b & 0x7F) << shift;
+          if ((b & 0x80) == 0) break;
+          shift += 7;
+        }
+        if (fn == fieldNumber) return val;
+      } else if (wt == 2) {
+        // length-delimited: skip
+        int len = 0; shift = 0;
+        while (i < bytes.length) {
+          final b = bytes[i++];
+          len |= (b & 0x7F) << shift;
+          if ((b & 0x80) == 0) break;
+          shift += 7;
+        }
+        i += len;
+      } else if (wt == 5) {
+        i += 4; // fixed32
+      } else if (wt == 1) {
+        i += 8; // fixed64
+      } else {
+        break; // unknown wire type, stop
+      }
+    }
+    return null;
   }
 }

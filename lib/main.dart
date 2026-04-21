@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'core/services/notification_service.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'firebase_options.dart';
 import 'core/theme/volt_theme.dart';
 import 'core/utils/app_router.dart';
 import 'core/utils/injection_container.dart' as di;
@@ -12,6 +12,7 @@ import 'features/dashboard/presentation/bloc/vehicle_bloc.dart';
 import 'features/charging/presentation/bloc/charging_bloc.dart';
 import 'features/dashboard/data/models/tesla_models.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -36,22 +37,28 @@ void main() async {
   await Hive.openBox<VehicleCache>('vehicle_cache');
   await Hive.openBox('vehicle_settings');
   await Hive.openBox('user_prefs');
-
-  // Initialize Firebase
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
-
-  // Anonymous Sign-in for Firestore permissions
-  try {
-    final userCredential = await FirebaseAuth.instance.signInAnonymously();
-    debugPrint('Firebase: Anonymous sign-in successful: ${userCredential.user?.uid}');
-  } catch (e) {
-    debugPrint('Firebase: Anonymous sign-in failed: $e');
-  }
+  // Vehicle data cache box for cold-start
+  await Hive.openBox('vehicle_data_cache');
+  // Maintenance tracker
+  await Hive.openBox('maintenance');
+  // Phantom drain sessions
+  await Hive.openBox('phantom_drain');
   
   await dotenv.load(fileName: ".env");
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  // Sign in anonymously so Firestore security rules can validate writes.
+  // Anonymous identity persists across app restarts on the same device.
+  try {
+    if (FirebaseAuth.instance.currentUser == null) {
+      await FirebaseAuth.instance.signInAnonymously();
+    }
+  } catch (e) {
+    debugPrint('main: Firebase anonymous sign-in failed: $e');
+  }
+
   await di.init();
+  await NotificationService().init();
   runApp(const MyApp());
 }
 
@@ -62,46 +69,23 @@ class MyApp extends StatefulWidget {
   State<MyApp> createState() => _MyAppState();
 }
 
-class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-  }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      debugPrint('App State: Resumed from background, triggering vehicle wake...');
-      // Use the global Navigator key or a context that has access to the BLoC
-      // Since MyApp is the parent, we might need a way to reach the BLoCs.
-      // Actually, since we're using MultiBlocProvider, we can use a key or just ensure we have access.
-    }
-  }
-
+class _MyAppState extends State<MyApp> {
   @override
   Widget build(BuildContext context) {
     return MultiBlocProvider(
       providers: [
         BlocProvider(create: (context) => di.sl<AuthBloc>()..add(AppStarted())),
-        BlocProvider(create: (context) => di.sl<VehicleBloc>()),
+        BlocProvider(create: (context) => di.sl<VehicleBloc>()..add(WakeOnForeground())),
         BlocProvider(create: (context) => di.sl<ChargingBloc>()..add(FetchNearbyStations())),
       ],
       child: Builder(
         builder: (context) {
-          // Listen for lifecycle changes here if we want direct bloc access
           return _LifecycleWatcher(
             child: MaterialApp.router(
               title: 'VoltRide',
               debugShowCheckedModeBanner: false,
               theme: VoltTheme.light(),
-              themeMode: ThemeMode.dark, // Default to dark as per spec
+              themeMode: ThemeMode.dark,
               darkTheme: VoltTheme.dark(),
               routerConfig: AppRouter.router,
             ),
@@ -136,10 +120,8 @@ class _LifecycleWatcherState extends State<_LifecycleWatcher> with WidgetsBindin
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      debugPrint('LifecycleWatcher: App resumed, triggering WakeOnForeground');
+      debugPrint('LifecycleWatcher: App resumed, triggering WakeAndFetch');
       context.read<VehicleBloc>().add(WakeOnForeground());
-      // Also refresh charging data
-      context.read<ChargingBloc>().add(const FetchChargingHistory(refresh: true));
     }
   }
 

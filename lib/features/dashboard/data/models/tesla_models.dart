@@ -97,6 +97,7 @@ class TeslaVehicleDataResponse {
 
 @JsonSerializable()
 class TeslaVehicleData {
+  final String? vin;
   @JsonKey(name: 'charge_state')
   final ChargeState? chargeState;
   @JsonKey(name: 'climate_state')
@@ -111,6 +112,7 @@ class TeslaVehicleData {
   final VehicleConfig? vehicleConfig;
 
   TeslaVehicleData({
+    this.vin,
     this.chargeState,
     this.climateState,
     this.vehicleState,
@@ -188,6 +190,26 @@ class ChargeState {
   @JsonKey(name: 'conn_charge_cable', fromJson: _dynamicToString)
   final String? connChargeType;
 
+  /// "Off", "StartAt", "DepartBy" — scheduled charging mode
+  @JsonKey(name: 'scheduled_charging_mode', fromJson: _dynamicToNullableString)
+  final String? scheduledChargingMode;
+
+  /// Unix timestamp for scheduled charge start time
+  @JsonKey(name: 'scheduled_charging_start_time', fromJson: _dynamicToNullableInt)
+  final int? scheduledChargingStartTime;
+
+  /// Unix timestamp for scheduled departure
+  @JsonKey(name: 'scheduled_departure_time', fromJson: _dynamicToNullableInt)
+  final int? scheduledDepartureTime;
+
+  /// Whether the charge port door is currently open
+  @JsonKey(name: 'charge_port_door_open')
+  final bool? chargePortDoorOpen;
+
+  /// Whether fast charger is present
+  @JsonKey(name: 'fast_charger_present')
+  final bool? fastChargerPresent;
+
   ChargeState({
     required this.batteryLevel,
     required this.batteryRange,
@@ -206,6 +228,11 @@ class ChargeState {
     this.batteryHeaterOn = false,
     this.fastChargerType,
     this.connChargeType,
+    this.scheduledChargingMode,
+    this.scheduledChargingStartTime,
+    this.scheduledDepartureTime,
+    this.chargePortDoorOpen,
+    this.fastChargerPresent,
   });
 
   factory ChargeState.fromJson(Map<String, dynamic> json) => _$ChargeStateFromJson(json);
@@ -229,6 +256,22 @@ class ClimateState {
   @JsonKey(name: 'fan_status', fromJson: _dynamicToInt)
   final int fanStatus;
 
+  @JsonKey(name: 'seat_heater_left', fromJson: _dynamicToInt)
+  final int seatHeaterLeft;   // 0=off, 1=low, 2=med, 3=high
+
+  @JsonKey(name: 'seat_heater_right', fromJson: _dynamicToInt)
+  final int seatHeaterRight;
+
+  @JsonKey(name: 'steering_wheel_heater')
+  final bool steeringWheelHeater;
+
+  @JsonKey(name: 'front_defroster_on')
+  final bool frontDefrosterOn;
+
+  /// "dog", "camp", "on", "off" — mirrors Tesla's climate_keeper_mode API field
+  @JsonKey(name: 'climate_keeper_mode', fromJson: _dynamicToNullableString)
+  final String? climateKeeperMode;
+
   ClimateState({
     required this.insideTemp,
     required this.outsideTemp,
@@ -237,6 +280,11 @@ class ClimateState {
     required this.isClimateOn,
     this.batteryHeaterOn = false,
     this.fanStatus = 0,
+    this.seatHeaterLeft = 0,
+    this.seatHeaterRight = 0,
+    this.steeringWheelHeater = false,
+    this.frontDefrosterOn = false,
+    this.climateKeeperMode,
   });
 
   factory ClimateState.fromJson(Map<String, dynamic> json) => _$ClimateStateFromJson(json);
@@ -675,6 +723,9 @@ class BatterySnapshot {
   @HiveField(8)
   final double odometer;
 
+  @HiveField(9)
+  final String? vin;
+
   BatterySnapshot({
     required this.timestamp,
     required this.batteryLevel,
@@ -685,6 +736,7 @@ class BatterySnapshot {
     required this.chargeLimitSoc,
     required this.shiftState,
     required this.odometer,
+    this.vin,
   });
 
   factory BatterySnapshot.fromJson(Map<String, dynamic> json) => _$BatterySnapshotFromJson(json);
@@ -732,6 +784,14 @@ class ChargeSession {
   @HiveField(12)
   final String? vin;
 
+  /// kW readings sampled during the session (one per poll cycle, ~5 min apart)
+  @HiveField(13)
+  final List<double> powerCurve;
+
+  /// Battery % at each power reading (same length as powerCurve)
+  @HiveField(14)
+  final List<double> socCurve;
+
   ChargeSession({
     required this.startTime,
     required this.endTime,
@@ -746,6 +806,8 @@ class ChargeSession {
     this.fastChargerType,
     this.connChargeType,
     this.vin,
+    this.powerCurve = const [],
+    this.socCurve = const [],
   });
 
   factory ChargeSession.fromJson(Map<String, dynamic> json) => _$ChargeSessionFromJson(json);

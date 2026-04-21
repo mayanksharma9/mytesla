@@ -8,9 +8,19 @@ import 'package:voltride/features/dashboard/presentation/pages/vehicle_selector_
 import 'package:voltride/features/dashboard/presentation/pages/main_scaffold.dart';
 import 'package:voltride/features/dashboard/presentation/bloc/vehicle_bloc.dart';
 import 'package:voltride/features/charging/presentation/pages/charging_page.dart';
+import 'package:voltride/features/charging/presentation/pages/charging_history_page.dart';
+import 'package:voltride/features/charging/presentation/pages/nearby_superchargers_page.dart';
 import 'package:voltride/features/battery/presentation/pages/battery_page.dart';
 import 'package:voltride/features/efficiency/presentation/pages/efficiency_page.dart';
 import 'package:voltride/features/auth/presentation/pages/security_setup_page.dart';
+import 'package:voltride/features/settings/presentation/pages/more_page.dart';
+import 'package:voltride/features/settings/presentation/pages/notifications_settings_page.dart';
+import 'package:voltride/features/settings/presentation/pages/maintenance_page.dart';
+import 'package:voltride/features/settings/presentation/pages/automations_page.dart';
+import 'package:voltride/features/settings/presentation/pages/cost_analytics_page.dart';
+import 'package:voltride/features/settings/presentation/pages/drain_analytics_page.dart';
+import 'package:voltride/features/telemetry/presentation/pages/energy_analytics_page.dart';
+import 'package:voltride/features/telemetry/presentation/pages/trips_page.dart';
 import 'package:voltride/core/utils/injection_container.dart';
 import 'dart:async';
 
@@ -126,6 +136,67 @@ class AppRouter {
               GoRoute(
                 path: '/efficiency',
                 builder: (context, state) => const EfficiencyPage(),
+              ),
+            ],
+          ),
+          // MORE TAB
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/more',
+                builder: (context, state) => const MorePage(),
+                routes: [
+                  GoRoute(
+                    path: 'analytics',
+                    parentNavigatorKey: _rootNavigatorKey,
+                    builder: (context, state) => const EnergyAnalyticsPage(),
+                  ),
+                  GoRoute(
+                    path: 'cost-analytics',
+                    parentNavigatorKey: _rootNavigatorKey,
+                    builder: (context, state) => const CostAnalyticsPage(),
+                  ),
+                  GoRoute(
+                    path: 'drain',
+                    parentNavigatorKey: _rootNavigatorKey,
+                    builder: (context, state) => const DrainAnalyticsPage(),
+                  ),
+                  GoRoute(
+                    path: 'charging-history',
+                    parentNavigatorKey: _rootNavigatorKey,
+                    builder: (context, state) => const ChargingHistoryPage(),
+                  ),
+                  GoRoute(
+                    path: 'trips',
+                    parentNavigatorKey: _rootNavigatorKey,
+                    builder: (context, state) => const TripsPage(),
+                  ),
+                  GoRoute(
+                    path: 'automations',
+                    parentNavigatorKey: _rootNavigatorKey,
+                    builder: (context, state) => const AutomationsPage(),
+                  ),
+                  GoRoute(
+                    path: 'maintenance',
+                    parentNavigatorKey: _rootNavigatorKey,
+                    builder: (context, state) => const MaintenancePage(),
+                  ),
+                  GoRoute(
+                    path: 'notifications',
+                    parentNavigatorKey: _rootNavigatorKey,
+                    builder: (context, state) => const NotificationsSettingsPage(),
+                  ),
+                  GoRoute(
+                    path: 'security',
+                    parentNavigatorKey: _rootNavigatorKey,
+                    builder: (context, state) => const SecuritySetupPage(),
+                  ),
+                  GoRoute(
+                    path: 'nearby-superchargers',
+                    parentNavigatorKey: _rootNavigatorKey,
+                    builder: (context, state) => const NearbySuperchargersPage(),
+                  ),
+                ],
               ),
             ],
           ),

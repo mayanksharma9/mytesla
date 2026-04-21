@@ -5,10 +5,8 @@ import 'dart:ui';
 import 'dart:math' as math;
 import 'package:voltride/core/utils/injection_container.dart' as di;
 import 'package:voltride/features/dashboard/data/services/telemetry_analytics_service.dart';
-import 'package:voltride/features/dashboard/data/services/intelligence_engine.dart';
 import 'package:voltride/features/dashboard/domain/vehicle.dart';
 import 'package:voltride/features/dashboard/presentation/bloc/vehicle_bloc.dart';
-import 'package:voltride/features/dashboard/data/models/tesla_models.dart' as models;
 import 'package:voltride/core/utils/unit_converter.dart';
 
 class HomePage extends StatefulWidget {
@@ -18,28 +16,22 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
+class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    context.read<VehicleBloc>().add(StartPolling());
+    // Fetch latest data and start periodic polling every time the home page opens.
+    // Lifecycle (foreground wake) is handled globally by _LifecycleWatcher in main.dart.
+    final bloc = context.read<VehicleBloc>();
+    bloc.add(FetchVehicles());
+    bloc.add(StartPolling());
   }
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    context.read<VehicleBloc>().add(StopPolling());
+    // Do NOT stop polling here — we want data to stay fresh even when the user
+    // navigates to other pages (battery, charging, climate, etc.).
     super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      context.read<VehicleBloc>().add(StartPolling());
-    } else {
-      context.read<VehicleBloc>().add(StopPolling());
-    }
   }
 
   @override
@@ -51,16 +43,28 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       backgroundColor: theme.scaffoldBackgroundColor,
       extendBodyBehindAppBar: true,
       appBar: _buildAppBar(context, isDark),
-      body: BlocBuilder<VehicleBloc, VehicleBlocState>(
+      body: BlocConsumer<VehicleBloc, VehicleBlocState>(
+        listenWhen: (prev, curr) =>
+            curr.commandError != null && curr.commandError != prev.commandError,
+        listener: (context, state) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(state.commandError!),
+              backgroundColor: VoltColors.error,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+          );
+        },
         builder: (context, state) {
           if (state.status == VehicleStatus.error) {
             return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.error_outline, color: Colors.red, size: 60),
+                  const Icon(Icons.error_outline, color: VoltColors.error, size: 60),
                   const SizedBox(height: 16),
-                  Text('Failed to sync: ${state.error}', style: const TextStyle(color: Colors.red)),
+                  Text('Failed to sync: ${state.error}', style: const TextStyle(color: VoltColors.error)),
                   const SizedBox(height: 24),
                   FilledButton(
                     onPressed: () => context.read<VehicleBloc>().add(FetchVehicles()),
@@ -80,9 +84,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                   const Icon(Icons.no_crash_outlined, size: 60, color: Colors.grey),
+                   const Icon(Icons.no_crash_outlined, size: 60, color: VoltColors.onSurfaceVariant),
                    const SizedBox(height: 16),
-                   const Text('No vehicles found in this account.', style: TextStyle(color: Colors.grey)),
+                   const Text('No vehicles found in this account.', style: TextStyle(color: VoltColors.onSurfaceVariant)),
                    const SizedBox(height: 24),
                    FilledButton(
                      onPressed: () => context.read<VehicleBloc>().add(FetchVehicles()),
@@ -108,7 +112,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   vehicle: vehicle,
                   batteryLevel: vehicle.batteryLevel.toDouble(),
                   range: vehicle.batteryRange.toInt(),
-                  isCharging: vehicle.state == 'charging',
+                  isCharging: vehicle.chargingState == 'Charging',
                   efficiencyScore: analytics.calculateEfficiencyScoreToday(state.batteryHistory, specs: state.vehicleCache),
                 ),
                 const SizedBox(height: 32),
@@ -122,7 +126,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 const SizedBox(height: 16),
                 _quickControls(context, state),
                 const SizedBox(height: 40),
-                _buildStatusFooter(vehicle),
+                _buildStatusFooter(vehicle, state.lastSyncTime),
               ],
             ),
           );
@@ -159,7 +163,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                         Icon(
                           Icons.directions_car_filled,
                           size: 18,
-                          color: v.vin == selectedVehicle?.vin ? VoltColors.primary : Colors.grey,
+                          color: v.vin == selectedVehicle?.vin ? VoltColors.primary : VoltColors.onSurfaceVariant,
                         ),
                         const SizedBox(width: 12),
                         Text(
@@ -235,11 +239,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               width: 8,
               height: 8,
               decoration: BoxDecoration(
-                color: vehicle.state == 'online' ? Colors.greenAccent : Colors.orangeAccent,
+                color: vehicle.state == 'online' ? VoltColors.success : VoltColors.warning,
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color: (vehicle.state == 'online' ? Colors.greenAccent : Colors.orangeAccent).withOpacity(0.4),
+                    color: (vehicle.state == 'online' ? VoltColors.success : VoltColors.warning).withOpacity(0.4),
                     blurRadius: 8,
                     spreadRadius: 2,
                   )
@@ -253,7 +257,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 fontSize: 10,
                 fontWeight: FontWeight.w800,
                 letterSpacing: 1.5,
-                color: Colors.grey.shade500,
+                color: VoltColors.onSurfaceVariant,
               ),
             ),
           ],
@@ -272,7 +276,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             fontSize: 12,
             fontWeight: FontWeight.w900,
             letterSpacing: 1.5,
-            color: Colors.grey,
+            color: VoltColors.onSurfaceVariant,
           ),
         ),
         Container(
@@ -414,8 +418,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   Color _getSuggestionColor(String title) {
-    if (title.contains('Warning') || title.contains('Low')) return Colors.redAccent;
-    if (title.contains('Optimize') || title.contains('Calibration')) return Colors.orangeAccent;
+    if (title.contains('Warning') || title.contains('Low')) return VoltColors.error;
+    if (title.contains('Optimize') || title.contains('Calibration')) return VoltColors.warning;
     return VoltColors.primary;
   }
 
@@ -469,7 +473,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   value: state.vehicleCache!.warrantyExpiryDate!.year.toString(),
                   subtitle: '${state.vehicleCache!.warrantyExpiryDate!.difference(DateTime.now()).inDays ~/ 365} Years Left',
                   icon: Icons.shield_outlined,
-                  color: Colors.blueAccent,
+                  color: VoltColors.info,
                 ),
               const SizedBox(width: 16),
               // Battery Type Spec Card
@@ -478,7 +482,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 value: state.vehicleCache?.batteryType?.toUpperCase() ?? 'NCA',
                 subtitle: state.vehicleCache?.batteryType == 'LFP' ? 'Charge to 100%' : 'Charge to 80%',
                 icon: Icons.settings_suggest_outlined,
-                color: Colors.purpleAccent,
+                color: VoltColors.tertiary,
               ),
             ],
           ),
@@ -489,10 +493,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   Color _getGradeColor(String grade) {
     switch (grade) {
-      case 'A': return Colors.greenAccent;
-      case 'B': return Colors.lightGreenAccent;
-      case 'C': return Colors.orangeAccent;
-      default: return Colors.redAccent;
+      case 'A': return VoltColors.success;
+      case 'B': return VoltColors.success;
+      case 'C': return VoltColors.warning;
+      default: return VoltColors.error;
     }
   }
 
@@ -521,12 +525,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                    Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: isLocked ? VoltColors.primary.withOpacity(0.1) : Colors.green.withOpacity(0.1),
+                      color: isLocked ? VoltColors.primary.withOpacity(0.1) : VoltColors.success.withOpacity(0.1),
                       shape: BoxShape.circle,
                     ),
                     child: Icon(
                       isLocked ? Icons.lock_outline : Icons.lock_open_outlined,
-                      color: isLocked ? VoltColors.primary : Colors.green,
+                      color: isLocked ? VoltColors.primary : VoltColors.success,
                       size: 24,
                     ),
                   ),
@@ -546,7 +550,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                         isLocked ? 'Tap to unlock' : 'Tap to lock',
                         style: TextStyle(
                           fontSize: 11,
-                          color: Colors.grey.withOpacity(0.7),
+                          color: VoltColors.onSurfaceVariant.withOpacity(0.7),
                           fontWeight: FontWeight.bold,
                         ),
                       ),
@@ -556,7 +560,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               ),
               Switch.adaptive(
                 value: !isLocked,
-                activeColor: Colors.green,
+                activeColor: VoltColors.success,
                 onChanged: (val) {
                    context.read<VehicleBloc>().add(ToggleLock(vehicle.id, !val));
                 },
@@ -598,7 +602,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                           fontSize: 10,
                           fontWeight: FontWeight.w900,
                           letterSpacing: 1.5,
-                          color: Colors.grey,
+                          color: VoltColors.onSurfaceVariant,
                         ),
                       ),
                       const SizedBox(height: 4),
@@ -628,11 +632,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     child: SliderTheme(
                       data: SliderTheme.of(context).copyWith(
                         trackHeight: 12,
-                        activeTrackColor: Colors.blueAccent,
-                        inactiveTrackColor: Colors.grey.withOpacity(0.1),
+                        activeTrackColor: VoltColors.info,
+                        inactiveTrackColor: VoltColors.onSurfaceVariant.withOpacity(0.1),
                         thumbColor: Colors.white,
                         thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 10),
-                        overlayColor: Colors.blueAccent.withOpacity(0.2),
+                        overlayColor: VoltColors.info.withOpacity(0.2),
                       ),
                       child: Slider(
                         value: driverTemp.clamp(15.0, 28.0),
@@ -690,17 +694,31 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildStatusFooter(dynamic vehicle) {
+  Widget _buildStatusFooter(dynamic vehicle, DateTime? lastSyncTime) {
+    String syncLabel;
+    if (lastSyncTime == null) {
+      syncLabel = 'NEVER SYNCED';
+    } else {
+      final diff = DateTime.now().difference(lastSyncTime);
+      if (diff.inSeconds < 60) {
+        syncLabel = 'JUST NOW';
+      } else if (diff.inMinutes < 60) {
+        syncLabel = '${diff.inMinutes}M AGO';
+      } else {
+        syncLabel = '${diff.inHours}H AGO';
+      }
+    }
+
     return Center(
       child: Column(
         children: [
           Text(
-            'LAST UPDATED: JUST NOW',
+            'LAST UPDATED: $syncLabel',
             style: TextStyle(
               fontSize: 10,
               fontWeight: FontWeight.w700,
               letterSpacing: 1.0,
-              color: Colors.grey.withOpacity(0.5),
+              color: VoltColors.onSurfaceVariant.withOpacity(0.5),
             ),
           ),
           const SizedBox(height: 4),
@@ -710,7 +728,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               fontSize: 10,
               fontWeight: FontWeight.w700,
               letterSpacing: 1.0,
-              color: Colors.grey.withOpacity(0.3),
+              color: VoltColors.onSurfaceVariant.withOpacity(0.3),
             ),
           ),
         ],
@@ -792,17 +810,17 @@ class _MainStatusCard extends StatelessWidget {
             ),
           ),
 
-          // Vehicle Image (Model 3)
+          // Vehicle Image — built from VIN + option codes
           Positioned(
             top: 80,
             left: 0,
             right: 0,
             child: Center(
               child: Image.network(
-                'https://static-assets.tesla.com/v1/compositor/?model=m3&view=STUD_3QTR&size=1440&bkba=1&options=MDL3,PPSW,PRM31,W39B,MT322&version=v0028d202111111626',
+                _buildVehicleImageUrl(vehicle),
                 height: 180,
                 fit: BoxFit.contain,
-                errorBuilder: (c, e, s) => const Icon(Icons.directions_car, size: 100, color: Colors.grey),
+                errorBuilder: (c, e, s) => const Icon(Icons.directions_car, size: 100, color: VoltColors.onSurfaceVariant),
               ),
             ),
           ),
@@ -832,7 +850,7 @@ class _MainStatusCard extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.w800,
-                        color: Colors.grey,
+                        color: VoltColors.onSurfaceVariant,
                       ),
                     ),
                   ],
@@ -844,7 +862,7 @@ class _MainStatusCard extends StatelessWidget {
                     fontSize: 12,
                     fontWeight: FontWeight.w800,
                     letterSpacing: 2,
-                    color: Colors.grey.withOpacity(0.8),
+                    color: VoltColors.onSurfaceVariant.withOpacity(0.8),
                   ),
                 ),
               ],
@@ -858,18 +876,18 @@ class _MainStatusCard extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: Colors.greenAccent.withOpacity(0.1),
+                color: VoltColors.success.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.greenAccent.withOpacity(0.2)),
+                border: Border.all(color: VoltColors.success.withOpacity(0.2)),
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.bolt, color: Colors.greenAccent, size: 14),
+                  const Icon(Icons.bolt, color: VoltColors.success, size: 14),
                   const SizedBox(width: 4),
                   Text(
                     efficiencyScore.toInt().toString(),
                     style: const TextStyle(
-                      color: Colors.greenAccent,
+                      color: VoltColors.success,
                       fontWeight: FontWeight.w900,
                       fontSize: 14,
                     ),
@@ -881,6 +899,36 @@ class _MainStatusCard extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// Resolve the Tesla compositor model code from the VIN.
+/// VIN position 4 (index 3) encodes the model for Tesla vehicles.
+String _buildVehicleImageUrl(Vehicle vehicle) {
+  final vin = vehicle.vin;
+  String model = 'm3'; // default fallback
+  if (vin.length >= 8) {
+    final modelChar = vin[3].toUpperCase();
+    switch (modelChar) {
+      case 'S': model = 'ms'; break;
+      case 'X': model = 'mx'; break;
+      case '3': model = 'm3'; break;
+      case 'Y': model = 'my'; break;
+      case 'C': model = 'ct'; break; // Cybertruck
+    }
+  }
+  // Use actual option codes if available, else generic defaults per model
+  final options = vehicle.optionCodes;
+  if (options != null && options.isNotEmpty) {
+    return 'https://static-assets.tesla.com/v1/compositor/?model=$model&view=STUD_3QTR&size=1440&bkba=1&options=${Uri.encodeComponent(options)}';
+  }
+  // Fallback per model with neutral color options
+  switch (model) {
+    case 'ms': return 'https://static-assets.tesla.com/v1/compositor/?model=ms&view=STUD_3QTR&size=1440&bkba=1&options=MDLS,PBSB,PMSS';
+    case 'mx': return 'https://static-assets.tesla.com/v1/compositor/?model=mx&view=STUD_3QTR&size=1440&bkba=1&options=MDLX,PBSB,PMSS';
+    case 'my': return 'https://static-assets.tesla.com/v1/compositor/?model=my&view=STUD_3QTR&size=1440&bkba=1&options=MDLY,PBSB,PMSS';
+    case 'ct': return 'https://static-assets.tesla.com/v1/compositor/?model=ct&view=STUD_3QTR&size=1440&bkba=1&options=MDLCT';
+    default:   return 'https://static-assets.tesla.com/v1/compositor/?model=m3&view=STUD_3QTR&size=1440&bkba=1&options=MDL3,PPSW,PRM31,W39B,MT322';
   }
 }
 
@@ -898,7 +946,7 @@ class _ArcPainter extends CustomPainter {
     const sweepAngle = 1.5 * math.pi;
 
     final backgroundPaint = Paint()
-      ..color = Colors.grey.withOpacity(0.1)
+      ..color = VoltColors.onSurfaceVariant.withOpacity(0.1)
       ..strokeWidth = 12
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round;
@@ -956,7 +1004,7 @@ class _StatTile extends StatelessWidget {
         color: isDark ? const Color(0xFF252525) : Colors.white,
         borderRadius: BorderRadius.circular(24),
         border: Border.all(
-          color: isDark ? Colors.white.withOpacity(0.05) : Colors.grey.withOpacity(0.1),
+          color: isDark ? Colors.white.withOpacity(0.05) : VoltColors.onSurfaceVariant.withOpacity(0.1),
         ),
       ),
       child: Column(
@@ -976,7 +1024,7 @@ class _StatTile extends StatelessWidget {
             style: const TextStyle(
               fontSize: 10,
               fontWeight: FontWeight.w800,
-              color: Colors.grey,
+              color: VoltColors.onSurfaceVariant,
             ),
           ),
           const SizedBox(height: 8),
@@ -986,7 +1034,7 @@ class _StatTile extends StatelessWidget {
               fontSize: 9,
               fontWeight: FontWeight.w900,
               letterSpacing: 1,
-              color: Colors.grey.withOpacity(0.6),
+              color: VoltColors.onSurfaceVariant.withOpacity(0.6),
             ),
           ),
         ],
@@ -1026,7 +1074,7 @@ class _ControlCircle extends StatelessWidget {
               border: Border.all(
                 color: isActive 
                   ? VoltColors.primary 
-                  : (isDark ? Colors.white.withOpacity(0.05) : Colors.grey.withOpacity(0.1)),
+                  : (isDark ? Colors.white.withOpacity(0.05) : VoltColors.onSurfaceVariant.withOpacity(0.1)),
               ),
               boxShadow: isActive ? [
                 BoxShadow(
@@ -1049,7 +1097,7 @@ class _ControlCircle extends StatelessWidget {
               fontSize: 10,
               fontWeight: FontWeight.w900,
               letterSpacing: 1,
-              color: isActive ? VoltColors.primary : Colors.grey,
+              color: isActive ? VoltColors.primary : VoltColors.onSurfaceVariant,
             ),
           ),
         ],
@@ -1082,7 +1130,7 @@ class _InsightCard extends StatelessWidget {
         color: isDark ? const Color(0xFF252525) : Colors.white,
         borderRadius: BorderRadius.circular(24),
         border: Border.all(
-          color: isDark ? Colors.white.withOpacity(0.05) : Colors.grey.withOpacity(0.1),
+          color: isDark ? Colors.white.withOpacity(0.05) : VoltColors.onSurfaceVariant.withOpacity(0.1),
         ),
       ),
       child: Column(
@@ -1120,7 +1168,7 @@ class _InsightCard extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 10,
                   fontWeight: FontWeight.w700,
-                  color: Colors.grey.withOpacity(0.8),
+                  color: VoltColors.onSurfaceVariant.withOpacity(0.8),
                 ),
               ),
             ],
@@ -1131,7 +1179,7 @@ class _InsightCard extends StatelessWidget {
               fontSize: 9,
               fontWeight: FontWeight.w900,
               letterSpacing: 1,
-              color: Colors.grey.withOpacity(0.5),
+              color: VoltColors.onSurfaceVariant.withOpacity(0.5),
             ),
           ),
         ],

@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:voltride/features/dashboard/data/services/telemetry_analytics_service.dart';
 import 'package:voltride/features/dashboard/data/services/intelligence_engine.dart';
@@ -18,14 +19,29 @@ class EfficiencyPage extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        title: const Text(
-          'DRIVE EFFICIENCY',
-          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, letterSpacing: 2),
+      extendBodyBehindAppBar: true,
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(72),
+        child: ClipRRect(
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+            child: AppBar(
+              backgroundColor: isDark
+                  ? Colors.black.withOpacity(0.6)
+                  : Colors.white.withOpacity(0.8),
+              elevation: 0,
+              centerTitle: true,
+              title: Text(
+                'DRIVE EFFICIENCY',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 2,
+                ),
+              ),
+            ),
+          ),
         ),
-        centerTitle: true,
       ),
       body: BlocBuilder<VehicleBloc, VehicleBlocState>(
         builder: (context, state) {
@@ -36,37 +52,49 @@ class EfficiencyPage extends StatelessWidget {
 
           final analytics = di.sl<TelemetryAnalyticsService>();
           final tripHistory = state.tripHistory;
-          
-          double currentDrive = 242.0; // Default fallback
-          double lifetimeAvg = 284.0; // Default fallback
-          
+
+          // Is the car actively moving right now?
+          final isDriving = vehicle.shiftState == 'D' || vehicle.shiftState == 'R';
+
+          double currentDrive = 0;
+          double lifetimeAvg = 0;
+          bool hasHistoryData = false;
+
           if (tripHistory.isNotEmpty) {
+            hasHistoryData = true;
             currentDrive = analytics.calculateEfficiencyWhPerMi(tripHistory.first);
             double totalWh = 0;
             double totalMi = 0;
-            for (var trip in tripHistory) {
-              totalWh += (analytics.calculateEfficiencyWhPerMi(trip) * trip.distance);
+            for (final trip in tripHistory) {
+              final eff = analytics.calculateEfficiencyWhPerMi(trip);
+              totalWh += eff * trip.distance;
               totalMi += trip.distance;
             }
-            if (totalMi > 0) {
-              lifetimeAvg = totalWh / totalMi;
-            }
+            if (totalMi > 0) lifetimeAvg = totalWh / totalMi;
           }
 
-          final trend = lifetimeAvg > 0 ? ((currentDrive - lifetimeAvg) / lifetimeAvg * 100) : 0.0;
+          final trend = (hasHistoryData && lifetimeAvg > 0)
+              ? ((currentDrive - lifetimeAvg) / lifetimeAvg * 100)
+              : 0.0;
 
           return SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.fromLTRB(24, 100, 24, 24),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildComparisonRow(isDark, currentDrive, lifetimeAvg, trend),
+                // Live drive card takes priority when driving
+                if (isDriving)
+                  _buildLiveDriveBanner(isDark, vehicle.power, vehicle.speed, vehicle.useMiles)
+                else if (!hasHistoryData)
+                  _buildNoDataBanner(isDark)
+                else
+                  _buildComparisonRow(isDark, currentDrive, lifetimeAvg, trend),
                 const SizedBox(height: 32),
-                _buildSectionTitle('EFFICIENCY VS SPEED'),
+                _buildSectionTitle('EFFICIENCY PER TRIP', isDark),
                 const SizedBox(height: 16),
-                _buildScatterPlot(isDark),
+                _buildEfficiencyChart(isDark, tripHistory, analytics),
                 const SizedBox(height: 32),
-                _buildSectionTitle('INTELLIGENT INSIGHTS'),
+                _buildSectionTitle('INTELLIGENT INSIGHTS', isDark),
                 const SizedBox(height: 16),
                 _buildInsightsList(isDark, state.suggestions),
                 const SizedBox(height: 100),
@@ -74,6 +102,127 @@ class EfficiencyPage extends StatelessWidget {
             ),
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildLiveDriveBanner(bool isDark, double powerKw, double speedRaw, bool useMiles) {
+    // power > 0 = consuming, < 0 = regenerating
+    final isRegen = powerKw < 0;
+    final absKw = powerKw.abs();
+
+    // Live instantaneous efficiency — only meaningful when moving
+    final speedUnit = useMiles ? 'mph' : 'km/h';
+    final effUnit = useMiles ? 'Wh/mi' : 'Wh/km';
+    String liveEffLabel;
+    if (speedRaw > 2) {
+      // power (kW) × 1000 / speed → Wh per distance-unit
+      final liveEff = (absKw * 1000) / speedRaw;
+      liveEffLabel = '${liveEff.toInt()} $effUnit';
+    } else {
+      liveEffLabel = isRegen ? 'Regenerating' : 'Stopped';
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: isRegen
+              ? [VoltColors.success.withOpacity(0.15), VoltColors.success.withOpacity(0.05)]
+              : [VoltColors.primary.withOpacity(0.15), VoltColors.primary.withOpacity(0.05)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: isRegen ? VoltColors.success.withOpacity(0.3) : VoltColors.primary.withOpacity(0.3),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: isRegen ? VoltColors.success : VoltColors.primary,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 6, height: 6,
+                      decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      isRegen ? 'REGENERATING' : 'DRIVE IN PROGRESS',
+                      style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _LiveStat(
+                label: 'SPEED',
+                value: '${speedRaw.toInt()}',
+                unit: speedUnit,
+                color: VoltColors.primary,
+              ),
+              _LiveStat(
+                label: isRegen ? 'REGEN' : 'POWER',
+                value: absKw.toStringAsFixed(1),
+                unit: 'kW',
+                color: isRegen ? VoltColors.success : VoltColors.warning,
+              ),
+              _LiveStat(
+                label: 'LIVE EFF.',
+                value: liveEffLabel.split(' ').first,
+                unit: liveEffLabel.contains(' ') ? liveEffLabel.split(' ').skip(1).join(' ') : '',
+                color: isRegen ? VoltColors.success : VoltColors.primary,
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Trip will be saved automatically when you park.',
+            style: TextStyle(fontSize: 11, color: VoltColors.onSurfaceVariant, fontWeight: FontWeight.w500),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNoDataBanner(bool isDark) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: isDark ? VoltColors.surfaceElevatedDark : VoltColors.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Column(
+        children: [
+          Icon(Icons.drive_eta, size: 40, color: VoltColors.onSurfaceVariant.withOpacity(0.4)),
+          const SizedBox(height: 12),
+          const Text(
+            'No drive sessions recorded yet',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: VoltColors.onSurfaceVariant),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Efficiency data will appear after your first drive',
+            style: TextStyle(fontSize: 12, color: VoltColors.onSurfaceVariant.withOpacity(0.7)),
+          ),
+        ],
       ),
     );
   }
@@ -96,7 +245,7 @@ class EfficiencyPage extends StatelessWidget {
             label: 'LIFETIME AVG',
             value: lifetime.toInt().toString(),
             unit: 'Wh/mi',
-            trend: 0, // No trend for lifetime itself
+            trend: 0,
             isDark: isDark,
           ),
         ),
@@ -104,70 +253,139 @@ class EfficiencyPage extends StatelessWidget {
     );
   }
 
-  Widget _buildSectionTitle(String title) {
+  Widget _buildSectionTitle(String title, bool isDark) {
     return Text(
       title,
-      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900, letterSpacing: 1.5, color: Colors.grey),
+      style: TextStyle(
+        fontSize: 12,
+        fontWeight: FontWeight.w900,
+        letterSpacing: 1.5,
+        color: VoltColors.onSurfaceVariant,
+      ),
     );
   }
 
-  Widget _buildScatterPlot(bool isDark) {
+  Widget _buildEfficiencyChart(
+    bool isDark,
+    List<DriveSession> trips,
+    TelemetryAnalyticsService analytics,
+  ) {
     return Container(
       height: 220,
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        color: isDark ? VoltColors.surfaceElevatedDark : VoltColors.surfaceContainerLowest,
         borderRadius: BorderRadius.circular(32),
       ),
-      child: ScatterChart(
-        ScatterChartData(
-          gridData: const FlGridData(show: false),
-          titlesData: const FlTitlesData(show: false),
-          borderData: FlBorderData(show: false),
-          scatterSpots: [
-            ScatterSpot(20, 180, dotPainter: FlDotCirclePainter(color: VoltColors.primary, radius: 4)),
-            ScatterSpot(30, 195, dotPainter: FlDotCirclePainter(color: VoltColors.primary, radius: 4)),
-            ScatterSpot(45, 230, dotPainter: FlDotCirclePainter(color: VoltColors.primary, radius: 5)),
-            ScatterSpot(55, 260, dotPainter: FlDotCirclePainter(color: VoltColors.primary, radius: 5)),
-            ScatterSpot(65, 310, dotPainter: FlDotCirclePainter(color: Colors.orangeAccent, radius: 6)),
-            ScatterSpot(75, 380, dotPainter: FlDotCirclePainter(color: Colors.redAccent, radius: 7)),
-            ScatterSpot(80, 420, dotPainter: FlDotCirclePainter(color: Colors.redAccent, radius: 8)),
-          ],
-        ),
-      ),
+      child: trips.isEmpty
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.bar_chart, size: 40, color: VoltColors.onSurfaceVariant.withOpacity(0.3)),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Drive to generate efficiency data',
+                    style: TextStyle(fontSize: 11, color: VoltColors.onSurfaceVariant),
+                  ),
+                ],
+              ),
+            )
+          : BarChart(
+              BarChartData(
+                gridData: const FlGridData(show: false),
+                titlesData: FlTitlesData(
+                  leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      getTitlesWidget: (value, meta) {
+                        final idx = value.toInt();
+                        final label = '#${idx + 1}';
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(label, style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: VoltColors.onSurfaceVariant)),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+                borderData: FlBorderData(show: false),
+                barGroups: _buildBarGroups(trips, analytics),
+              ),
+            ),
     );
+  }
+
+  List<BarChartGroupData> _buildBarGroups(
+    List<DriveSession> trips,
+    TelemetryAnalyticsService analytics,
+  ) {
+    final recent = trips.length > 10 ? trips.sublist(0, 10) : trips;
+    return recent.asMap().entries.map((e) {
+      final eff = analytics.calculateEfficiencyWhPerMi(e.value);
+      final color = eff < 250
+          ? VoltColors.success
+          : eff < 320
+              ? VoltColors.warning
+              : VoltColors.error;
+      return BarChartGroupData(
+        x: e.key,
+        barRods: [
+          BarChartRodData(
+            toY: eff,
+            color: color,
+            width: 14,
+            borderRadius: BorderRadius.circular(6),
+          ),
+        ],
+      );
+    }).toList();
   }
 
   Widget _buildInsightsList(bool isDark, List<SmartSuggestion> suggestions) {
     if (suggestions.isEmpty) {
-      return const Center(child: Text('Calculating insights...', style: TextStyle(color: Colors.grey, fontSize: 12)));
+      return Center(
+        child: Text(
+          'Calculating insights…',
+          style: TextStyle(color: VoltColors.onSurfaceVariant, fontSize: 12),
+        ),
+      );
     }
 
     return Column(
       children: suggestions.take(3).map<Widget>((s) => _InsightTile(
-        title: s.title,
-        desc: s.description,
-        icon: _getIconForSuggestion(s.icon),
-        color: _getColorForSuggestion(s.title),
-        isDark: isDark,
-      )).toList(),
+            title: s.title,
+            desc: s.description,
+            icon: _getIconForSuggestion(s.icon),
+            color: _getColorForSuggestion(s.title),
+            isDark: isDark,
+          )).toList(),
     );
   }
 
   IconData _getIconForSuggestion(String iconName) {
     switch (iconName) {
-      case 'battery_charging_full': return Icons.bolt;
-      case 'battery_saver': return Icons.battery_saver;
-      case 'warning': return Icons.warning_amber;
-      case 'speed': return Icons.speed;
-      case 'wb_sunny_outlined': return Icons.wb_sunny_outlined;
-      default: return Icons.insights;
+      case 'battery_charging_full':
+        return Icons.bolt;
+      case 'battery_saver':
+        return Icons.battery_saver;
+      case 'warning':
+        return Icons.warning_amber;
+      case 'speed':
+        return Icons.speed;
+      case 'wb_sunny_outlined':
+        return Icons.wb_sunny_outlined;
+      default:
+        return Icons.insights;
     }
   }
 
   Color _getColorForSuggestion(String title) {
-    if (title.contains('Warning')) return Colors.redAccent;
-    if (title.contains('Optimize')) return Colors.orangeAccent;
+    if (title.contains('Warning')) return VoltColors.error;
+    if (title.contains('Optimize')) return VoltColors.warning;
     return VoltColors.primary;
   }
 }
@@ -189,11 +407,12 @@ class _EfficiencyCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isNegative = trend < 0; // Negative Wh/mi is GOOD (efficiency)
+    final isNegative = trend < 0; // Negative Wh/mi delta = more efficient
+    final trendColor = isNegative ? VoltColors.success : VoltColors.warning;
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        color: isDark ? VoltColors.surfaceElevatedDark : VoltColors.surfaceContainerLowest,
         borderRadius: BorderRadius.circular(24),
       ),
       child: Column(
@@ -202,27 +421,30 @@ class _EfficiencyCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(label, style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: Colors.grey)),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                decoration: BoxDecoration(
-                  color: (isNegative ? Colors.greenAccent : Colors.orangeAccent).withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  '${isNegative ? '' : '+'}${trend.toInt()}%',
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w900,
-                    color: isNegative ? Colors.greenAccent : Colors.orangeAccent,
+              Text(
+                label,
+                style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: VoltColors.onSurfaceVariant),
+              ),
+              if (trend != 0)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: trendColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    '${isNegative ? '' : '+'}${trend.toInt()}%',
+                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: trendColor),
                   ),
                 ),
-              ),
             ],
           ),
           const SizedBox(height: 12),
           Text(value, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900)),
-          Text(unit, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.grey)),
+          Text(
+            unit,
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: VoltColors.onSurfaceVariant),
+          ),
         ],
       ),
     );
@@ -250,7 +472,7 @@ class _InsightTile extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        color: isDark ? VoltColors.surfaceElevatedDark : VoltColors.surfaceContainerLowest,
         borderRadius: BorderRadius.circular(24),
       ),
       child: Row(
@@ -269,14 +491,42 @@ class _InsightTile extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title.toUpperCase(), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900, letterSpacing: 1)),
+                Text(
+                  title.toUpperCase(),
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900, letterSpacing: 1),
+                ),
                 const SizedBox(height: 4),
-                Text(desc, style: const TextStyle(fontSize: 13, height: 1.4, color: Colors.grey, fontWeight: FontWeight.w500)),
+                Text(
+                  desc,
+                  style: TextStyle(fontSize: 13, height: 1.4, color: VoltColors.onSurfaceVariant, fontWeight: FontWeight.w500),
+                ),
               ],
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+class _LiveStat extends StatelessWidget {
+  final String label;
+  final String value;
+  final String unit;
+  final Color color;
+
+  const _LiveStat({required this.label, required this.value, required this.unit, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text(label, style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: VoltColors.onSurfaceVariant, letterSpacing: 1)),
+        const SizedBox(height: 6),
+        Text(value, style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: color, height: 1)),
+        if (unit.isNotEmpty)
+          Text(unit, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: VoltColors.onSurfaceVariant)),
+      ],
     );
   }
 }

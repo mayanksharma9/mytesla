@@ -134,7 +134,7 @@ class _HistoryCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: isDark ? VoltColors.surfaceContainer : VoltColors.surfaceContainerLowest,
+        color: isDark ? VoltColors.surfaceElevatedDark : VoltColors.surfaceContainerLowest,
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: Colors.white.withOpacity(0.05)),
       ),

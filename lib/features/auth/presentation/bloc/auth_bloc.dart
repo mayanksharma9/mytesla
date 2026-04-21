@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:equatable/equatable.dart';
 import '../../domain/auth_repository.dart';
 import '../../domain/security_repository.dart';
 import 'package:voltride/features/dashboard/data/models/tesla_models.dart';
+import 'package:voltride/core/network/tesla_api_client.dart';
 
 // States
 enum AuthStatus { initial, authenticated, unauthenticated, loading, error }
@@ -74,6 +76,7 @@ class ToggleVirtualKeyStatus extends AuthEvent {
 class AuthBloc extends Bloc<AuthEvent, AuthState> {
   final AuthRepository _authRepository;
   final SecurityRepository _securityRepository;
+  StreamSubscription? _sessionExpiredSub;
 
   AuthBloc(this._authRepository, this._securityRepository) : super(const AuthState()) {
     on<AppStarted>(_onAppStarted);
@@ -81,6 +84,17 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     on<LogoutRequested>(_onLogoutRequested);
     on<ProfileFetched>(_onProfileFetched);
     on<ToggleVirtualKeyStatus>(_onToggleVirtualKeyStatus);
+
+    // Auto-logout when TeslaApiClient detects an invalidated refresh token.
+    _sessionExpiredSub = TeslaApiClient.sessionExpired.listen((_) {
+      add(LogoutRequested());
+    });
+  }
+
+  @override
+  Future<void> close() {
+    _sessionExpiredSub?.cancel();
+    return super.close();
   }
 
   Future<void> _onAppStarted(AppStarted event, Emitter<AuthState> emit) async {
