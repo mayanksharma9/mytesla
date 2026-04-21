@@ -56,6 +56,7 @@ class _ClimatePageState extends State<ClimatePage> {
           if (error == 'VIRTUAL_KEY_NOT_ADDED') {
             showModalBottomSheet(
               context: context,
+              isScrollControlled: true,
               backgroundColor: Colors.transparent,
               builder: (_) => const VirtualKeySheet(),
             );

@@ -39,6 +39,7 @@ class _HomePageState extends State<HomePage> {
     if (error == 'VIRTUAL_KEY_NOT_ADDED') {
       showModalBottomSheet(
         context: context,
+        isScrollControlled: true,
         backgroundColor: Colors.transparent,
         builder: (_) => const VirtualKeySheet(),
       );
@@ -1209,59 +1210,62 @@ class VirtualKeySheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
     return Container(
-      margin: const EdgeInsets.all(12),
+      margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: theme.colorScheme.outlineVariant,
-              borderRadius: BorderRadius.circular(2),
+      child: SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(24, 20, 24, 24 + bottomPadding),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.outlineVariant,
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
-          ),
-          const SizedBox(height: 20),
-          const Icon(Icons.key_off_rounded, size: 48, color: VoltColors.error),
-          const SizedBox(height: 12),
-          Text(
-            'Virtual Key Required',
-            style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'This app needs a virtual key registered on your vehicle before it can send commands.',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-          ),
-          const SizedBox(height: 20),
-          _Step(number: '1', text: 'Open the link below on your phone — it will launch the Tesla app automatically.'),
-          const SizedBox(height: 8),
-          _Step(number: '2', text: 'In the Tesla app, tap your car on the map to pair the key.'),
-          const SizedBox(height: 8),
-          _Step(number: '3', text: 'Come back here and retry the command.'),
-          const SizedBox(height: 24),
-          FilledButton.icon(
-            onPressed: () => launchUrl(Uri.parse(_keyUrl), mode: LaunchMode.externalApplication),
-            icon: const Icon(Icons.open_in_new_rounded, size: 18),
-            label: const Text('Register Virtual Key'),
-            style: FilledButton.styleFrom(
-              minimumSize: const Size.fromHeight(48),
-              backgroundColor: VoltColors.primary,
+            const SizedBox(height: 20),
+            const Icon(Icons.key_off_rounded, size: 44, color: VoltColors.error),
+            const SizedBox(height: 10),
+            Text(
+              'Virtual Key Required',
+              style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
             ),
-          ),
-          const SizedBox(height: 8),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Dismiss'),
-          ),
-        ],
+            const SizedBox(height: 6),
+            Text(
+              'This app needs a virtual key registered on your vehicle before it can send commands.',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: 16),
+            _Step(number: '1', text: 'Tap the button below — it will open the Tesla app on your phone.'),
+            const SizedBox(height: 8),
+            _Step(number: '2', text: 'In the Tesla app, tap your car on the map to pair the key.'),
+            const SizedBox(height: 8),
+            _Step(number: '3', text: 'Come back here and retry the command.'),
+            const SizedBox(height: 20),
+            FilledButton.icon(
+              onPressed: () => launchUrl(Uri.parse(_keyUrl), mode: LaunchMode.externalApplication),
+              icon: const Icon(Icons.open_in_new_rounded, size: 18),
+              label: const Text('Register Virtual Key'),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(48),
+                backgroundColor: VoltColors.primary,
+              ),
+            ),
+            const SizedBox(height: 6),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Dismiss'),
+            ),
+          ],
+        ),
       ),
     );
   }
