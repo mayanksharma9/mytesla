@@ -67,20 +67,26 @@ class TVCPSigner {
 
     final sessionInfoBytes = response.sessionInfo;
 
-    // The vehicle firmware sends Session_Info_Status at field 7 (wire type 0, varint),
-    // but our generated proto maps `status` to field 5. Check both to be safe.
-    final rawStatus = _scanVarintField(sessionInfoBytes, fieldNumber: 7);
-    if (rawStatus == Session_Info_Status.SESSION_INFO_STATUS_KEY_NOT_ON_WHITELIST.value) {
+    // Log raw field values at both field 5 (proto-defined) and field 7 (observed
+    // in some firmware versions) so we can diagnose mismatches in Cloud Run logs.
+    final f5 = _scanVarintField(sessionInfoBytes, fieldNumber: 5);
+    final f7 = _scanVarintField(sessionInfoBytes, fieldNumber: 7);
+    print('TVCPSigner[$vin]: SessionInfo field5=$f5 field7=$f7 '
+        '(${Session_Info_Status.SESSION_INFO_STATUS_KEY_NOT_ON_WHITELIST.value}=NOT_ON_WHITELIST)');
+
+    final info = SessionInfo.fromBuffer(sessionInfoBytes);
+    print('TVCPSigner[$vin]: proto-parsed status=${info.status}');
+
+    // Check at field 7 first (observed firmware behaviour), then fall back to
+    // the proto-generated field 5. Either being NOT_ON_WHITELIST is fatal.
+    final notOnWhitelistVal = Session_Info_Status.SESSION_INFO_STATUS_KEY_NOT_ON_WHITELIST.value;
+    if (f7 == notOnWhitelistVal || f5 == notOnWhitelistVal ||
+        info.status == Session_Info_Status.SESSION_INFO_STATUS_KEY_NOT_ON_WHITELIST) {
       throw Exception(
         'Key not on vehicle whitelist. '
         'Open https://tesla.com/_ak/thedevelopersharma.com in the Tesla app '
         'and tap your car to register the virtual key.',
       );
-    }
-
-    final info = SessionInfo.fromBuffer(sessionInfoBytes);
-    if (info.status == Session_Info_Status.SESSION_INFO_STATUS_KEY_NOT_ON_WHITELIST) {
-      throw Exception('Key not on vehicle whitelist');
     }
 
     final vehiclePubKey = Uint8List.fromList(info.publicKey);

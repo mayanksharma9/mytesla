@@ -122,14 +122,28 @@ void main(List<String> args) async {
     } catch (e, stack) {
       print('Proxy Error for $vin: $e');
       print(stack);
-      // If error is related to session, reset the signer
-      if (e.toString().contains('Session') || e.toString().contains('whitelist')) {
+
+      final msg = e.toString();
+
+      // Virtual key whitelist rejection — return 403 so the Flutter client
+      // surfaces it as a permanent error rather than falling back to direct API.
+      if (msg.contains('whitelist') || msg.contains('Key not on')) {
+        signers.remove(vin); // force re-handshake if key is added later
+        return Response.forbidden(jsonEncode({
+          'error': msg,
+          'type': 'VirtualKeyNotRegistered',
+        }), headers: {'Content-Type': 'application/json'});
+      }
+
+      // Session errors: reset signer so next attempt re-handshakes cleanly.
+      if (msg.contains('Session')) {
         signers.remove(vin);
       }
+
       return Response.internalServerError(body: jsonEncode({
-        'error': e.toString(),
-        'type': e.runtimeType.toString()
-      }));
+        'error': msg,
+        'type': e.runtimeType.toString(),
+      }), headers: {'Content-Type': 'application/json'});
     }
   });
 
@@ -191,6 +205,39 @@ void main(List<String> args) async {
 
   app.get('/health', (Request request) {
     return Response.ok('OK');
+  });
+
+  /// Diagnostic endpoint: returns the proxy's EC public key in both hex and
+  /// uncompressed-point format. The PEM at
+  /// https://thedevelopersharma.com/.well-known/appspecific/com.tesla.3p.public-key.pem
+  /// must encode the SAME 65-byte point for virtual-key registration to work.
+  app.get('/public-key', (Request request) {
+    final rawBytes = SecurityUtils().publicKeyBytes; // 65-byte uncompressed EC point
+    final hex = rawBytes.map((e) => e.toRadixString(16).padLeft(2, '0')).join();
+
+    // Encode as DER SubjectPublicKeyInfo for P-256 so it can be wrapped in PEM.
+    // OID for ecPublicKey: 1.2.840.10045.2.1
+    // OID for P-256 curve: 1.2.840.10045.3.1.7
+    final oidAlgo = [0x30, 0x13,
+      0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01,  // ecPublicKey OID
+      0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07  // P-256 OID
+    ];
+    // BIT STRING: 0x03 len 0x00 + 65 raw bytes
+    final bitString = [0x03, rawBytes.length + 1, 0x00, ...rawBytes];
+    final spkiContent = [...oidAlgo, ...bitString];
+    final spki = [0x30, spkiContent.length, ...spkiContent];
+    final b64 = base64Encode(Uint8List.fromList(spki));
+    // Wrap in 64-char lines
+    final lines = <String>[];
+    for (var i = 0; i < b64.length; i += 64) {
+      lines.add(b64.substring(i, i + 64 > b64.length ? b64.length : i + 64));
+    }
+    final pem = '-----BEGIN PUBLIC KEY-----\n${lines.join('\n')}\n-----END PUBLIC KEY-----';
+
+    return Response.ok(
+      jsonEncode({'hex': hex, 'pem': pem}),
+      headers: {'Content-Type': 'application/json'},
+    );
   });
 
   // Default Pipeline

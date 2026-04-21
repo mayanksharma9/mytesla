@@ -302,8 +302,20 @@ class TeslaApiClient {
               continue;
             }
             
+            // Virtual key whitelist rejection — permanent error, surface immediately.
+            // Proxy returns 403 for this; legacy proxy may return 500 with the
+            // message in the body. Either way do NOT fall back to direct API.
+            final proxyErrMsg = (errorBody is Map ? errorBody['error'] as String? : null) ?? '';
+            if (proxyErrMsg.toLowerCase().contains('whitelist') ||
+                proxyErrMsg.toLowerCase().contains('key not on')) {
+              throw Exception(
+                'Virtual key not on vehicle whitelist. Open https://tesla.com/_ak/thedevelopersharma.com '
+                'in the Tesla app and tap your car to register the key.',
+              );
+            }
+
             // Detect "Not Implemented" or 500 status from proxy and fall back to direct
-            if (statusCode == 501 || statusCode == 500 || 
+            if (statusCode == 501 || statusCode == 500 ||
                 (errorBody is Map && errorBody['type'] == 'UnimplementedError')) {
               debugPrint('TeslaApiClient: Proxy doesn\'t support $command. Falling back to direct Fleet API...');
               tryProxy = false;
