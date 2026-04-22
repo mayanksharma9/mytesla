@@ -169,7 +169,11 @@ class TeslaApiClient {
   }
 
   Future<TeslaVehicleDataResponse> getVehicleData(String vehicleId) async {
-    const endpoints = 'charge_state;climate_state;drive_state;gui_settings;vehicle_config;vehicle_state;location_data';
+    // location_data requires vehicle_location scope — omit it from the default
+    // poll so existing tokens (without that scope) don't receive 403.
+    // Location is covered by Fleet Telemetry (Location field) once configured.
+    // After re-auth with the updated scope list, add location_data back here.
+    const endpoints = 'charge_state;climate_state;drive_state;gui_settings;vehicle_config;vehicle_state';
     final response = await _dio.get(
       '/api/1/vehicles/$vehicleId/vehicle_data',
       queryParameters: {'endpoints': endpoints},

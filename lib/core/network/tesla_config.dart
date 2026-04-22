@@ -20,12 +20,16 @@ class TeslaConfig {
   static const String authUrl = 'https://auth.tesla.com/oauth2/v3/authorize';
   static const String tokenUrl = 'https://auth.tesla.com/oauth2/v3/token';
   
-  // Scopes required for the app
+  // Scopes required for the app.
+  // vehicle_location is required for location_data in vehicle_data and Fleet
+  // Telemetry Location field. If the current token lacks this scope the user
+  // must log out and back in to obtain a new token.
   static const List<String> scopes = [
     'openid',
     'offline_access',
     'user_data',
     'vehicle_device_data',
+    'vehicle_location',
     'vehicle_cmds',
     'vehicle_charging_cmds',
     'charging_history',
