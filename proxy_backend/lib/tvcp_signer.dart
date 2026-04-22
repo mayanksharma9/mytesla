@@ -67,21 +67,14 @@ class TVCPSigner {
 
     final sessionInfoBytes = response.sessionInfo;
 
-    // Log raw field values at both field 5 (proto-defined) and field 7 (observed
-    // in some firmware versions) so we can diagnose mismatches in Cloud Run logs.
-    final f5 = _scanVarintField(sessionInfoBytes, fieldNumber: 5);
-    final f7 = _scanVarintField(sessionInfoBytes, fieldNumber: 7);
-    print('TVCPSigner[$vin]: SessionInfo field5=$f5 field7=$f7 '
-        '(${Session_Info_Status.SESSION_INFO_STATUS_KEY_NOT_ON_WHITELIST.value}=NOT_ON_WHITELIST)');
-
     final info = SessionInfo.fromBuffer(sessionInfoBytes);
     print('TVCPSigner[$vin]: proto-parsed status=${info.status}');
 
-    // Check at field 7 first (observed firmware behaviour), then fall back to
-    // the proto-generated field 5. Either being NOT_ON_WHITELIST is fatal.
-    final notOnWhitelistVal = Session_Info_Status.SESSION_INFO_STATUS_KEY_NOT_ON_WHITELIST.value;
-    if (f7 == notOnWhitelistVal || f5 == notOnWhitelistVal ||
-        info.status == Session_Info_Status.SESSION_INFO_STATUS_KEY_NOT_ON_WHITELIST) {
+    // Only trust the proto-generated field 5 for the status check.
+    // Field 7 exists in some firmware responses but is NOT the status field —
+    // it is an unrelated varint that happens to equal 1, which previously
+    // caused false-positive whitelist rejections even when the key was registered.
+    if (info.status == Session_Info_Status.SESSION_INFO_STATUS_KEY_NOT_ON_WHITELIST) {
       throw Exception(
         'Key not on vehicle whitelist. '
         'Open https://tesla.com/_ak/thedevelopersharma.com in the Tesla app '
@@ -434,53 +427,4 @@ class TVCPSigner {
     return bytes;
   }
 
-  /// Scans raw protobuf bytes for a varint field with the given field number.
-  /// Returns the varint value if found, or null if the field is absent.
-  /// Used to read fields that exist in the vehicle's wire format but are
-  /// assigned a different field number in our generated proto (e.g. status
-  /// is at field 7 in vehicle firmware but field 5 in our .pb.dart).
-  static int? _scanVarintField(List<int> bytes, {required int fieldNumber}) {
-    int i = 0;
-    while (i < bytes.length) {
-      // Read tag varint
-      int tagVal = 0, shift = 0;
-      while (i < bytes.length) {
-        final b = bytes[i++];
-        tagVal |= (b & 0x7F) << shift;
-        if ((b & 0x80) == 0) break;
-        shift += 7;
-      }
-      final fn = tagVal >> 3;
-      final wt = tagVal & 7;
-
-      if (wt == 0) {
-        // varint field
-        int val = 0; shift = 0;
-        while (i < bytes.length) {
-          final b = bytes[i++];
-          val |= (b & 0x7F) << shift;
-          if ((b & 0x80) == 0) break;
-          shift += 7;
-        }
-        if (fn == fieldNumber) return val;
-      } else if (wt == 2) {
-        // length-delimited: skip
-        int len = 0; shift = 0;
-        while (i < bytes.length) {
-          final b = bytes[i++];
-          len |= (b & 0x7F) << shift;
-          if ((b & 0x80) == 0) break;
-          shift += 7;
-        }
-        i += len;
-      } else if (wt == 5) {
-        i += 4; // fixed32
-      } else if (wt == 1) {
-        i += 8; // fixed64
-      } else {
-        break; // unknown wire type, stop
-      }
-    }
-    return null;
-  }
 }
