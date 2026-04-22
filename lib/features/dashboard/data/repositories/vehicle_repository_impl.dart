@@ -616,6 +616,34 @@ class VehicleRepositoryImpl implements VehicleRepository {
     }
   }
 
+  @override
+  Future<void> windowControl(String vehicleId, String command) async =>
+      _executeWithWakeUp(vehicleId, () => _apiClient.windowControl(vehicleId, command));
+
+  @override
+  Future<void> mediaCommand(String vehicleId, String command) async =>
+      _executeWithWakeUp(vehicleId, () => _apiClient.mediaCommand(vehicleId, command));
+
+  @override
+  Future<void> remoteBoombox(String vehicleId, int soundId) async =>
+      _executeWithWakeUp(vehicleId, () => _apiClient.remoteBoombox(vehicleId, soundId));
+
+  @override
+  Future<void> setBioweaponMode(String vehicleId, bool on) async =>
+      _executeWithWakeUp(vehicleId, () => _apiClient.setBioweaponMode(vehicleId, on));
+
+  @override
+  Future<void> setCabinOverheatProtection(String vehicleId, {required bool on, bool fanOnly = false}) async =>
+      _executeWithWakeUp(vehicleId, () => _apiClient.setCabinOverheatProtection(vehicleId, on: on, fanOnly: fanOnly));
+
+  @override
+  Future<void> setPreconditioningMax(String vehicleId, bool on) async =>
+      _executeWithWakeUp(vehicleId, () => _apiClient.setPreconditioningMax(vehicleId, on));
+
+  @override
+  Future<void> remoteStartDrive(String vehicleId) async =>
+      _executeWithWakeUp(vehicleId, () => _apiClient.remoteStartDrive(vehicleId));
+
   double _dynamicToDouble(dynamic value) {
     if (value == null) return 0.0;
     if (value is double) return value;

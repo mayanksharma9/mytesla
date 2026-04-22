@@ -45,6 +45,19 @@ abstract class VehicleRepository {
 
   // Fleet Telemetry
   Future<void> configureFleetTelemetry(String vehicleId, String hostname);
+
+  // Windows & Media
+  Future<void> windowControl(String vehicleId, String command);
+  Future<void> mediaCommand(String vehicleId, String command);
+  Future<void> remoteBoombox(String vehicleId, int soundId);
+
+  // Extra Climate
+  Future<void> setBioweaponMode(String vehicleId, bool on);
+  Future<void> setCabinOverheatProtection(String vehicleId, {required bool on, bool fanOnly = false});
+  Future<void> setPreconditioningMax(String vehicleId, bool on);
+
+  // Remote Start
+  Future<void> remoteStartDrive(String vehicleId);
   
   // History & Analytics (Local)
   Future<List<BatterySnapshot>> getBatteryHistory(String vin);

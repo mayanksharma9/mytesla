@@ -169,6 +169,89 @@ class SetScheduledCharging extends VehicleEvent {
 
 class FetchNearbySuperchargers extends VehicleEvent {}
 
+class WindowControl extends VehicleEvent {
+  final String vehicleId;
+  final String command; // "vent" or "close"
+  const WindowControl(this.vehicleId, this.command);
+  @override
+  List<Object?> get props => [vehicleId, command];
+}
+
+class MediaTogglePlayback extends VehicleEvent {
+  final String vehicleId;
+  const MediaTogglePlayback(this.vehicleId);
+  @override
+  List<Object?> get props => [vehicleId];
+}
+
+class MediaNextTrack extends VehicleEvent {
+  final String vehicleId;
+  const MediaNextTrack(this.vehicleId);
+  @override
+  List<Object?> get props => [vehicleId];
+}
+
+class MediaPrevTrack extends VehicleEvent {
+  final String vehicleId;
+  const MediaPrevTrack(this.vehicleId);
+  @override
+  List<Object?> get props => [vehicleId];
+}
+
+class MediaVolumeUp extends VehicleEvent {
+  final String vehicleId;
+  const MediaVolumeUp(this.vehicleId);
+  @override
+  List<Object?> get props => [vehicleId];
+}
+
+class MediaVolumeDown extends VehicleEvent {
+  final String vehicleId;
+  const MediaVolumeDown(this.vehicleId);
+  @override
+  List<Object?> get props => [vehicleId];
+}
+
+class RemoteBoombox extends VehicleEvent {
+  final String vehicleId;
+  final int soundId; // 0=random fart, 2000=locate ping
+  const RemoteBoombox(this.vehicleId, this.soundId);
+  @override
+  List<Object?> get props => [vehicleId, soundId];
+}
+
+class SetBioweaponMode extends VehicleEvent {
+  final String vehicleId;
+  final bool on;
+  const SetBioweaponMode(this.vehicleId, this.on);
+  @override
+  List<Object?> get props => [vehicleId, on];
+}
+
+class SetCabinOverheatProtection extends VehicleEvent {
+  final String vehicleId;
+  final bool on;
+  final bool fanOnly;
+  const SetCabinOverheatProtection(this.vehicleId, {required this.on, this.fanOnly = false});
+  @override
+  List<Object?> get props => [vehicleId, on, fanOnly];
+}
+
+class RemoteStartDrive extends VehicleEvent {
+  final String vehicleId;
+  const RemoteStartDrive(this.vehicleId);
+  @override
+  List<Object?> get props => [vehicleId];
+}
+
+class SetPreconditioningMax extends VehicleEvent {
+  final String vehicleId;
+  final bool on;
+  const SetPreconditioningMax(this.vehicleId, this.on);
+  @override
+  List<Object?> get props => [vehicleId, on];
+}
+
 class FetchHistory extends VehicleEvent {
   final String vin;
   const FetchHistory(this.vin);
@@ -351,6 +434,17 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleBlocState> {
     on<SetScheduledCharging>(_onSetScheduledCharging);
     on<FetchNearbySuperchargers>(_onFetchNearbySuperchargers);
     on<RefreshSelectedVehicle>(_onRefreshSelectedVehicle);
+    on<WindowControl>(_onWindowControl);
+    on<MediaTogglePlayback>(_onMediaTogglePlayback);
+    on<MediaNextTrack>(_onMediaNextTrack);
+    on<MediaPrevTrack>(_onMediaPrevTrack);
+    on<MediaVolumeUp>(_onMediaVolumeUp);
+    on<MediaVolumeDown>(_onMediaVolumeDown);
+    on<RemoteBoombox>(_onRemoteBoombox);
+    on<SetBioweaponMode>(_onSetBioweaponMode);
+    on<SetCabinOverheatProtection>(_onSetCabinOverheatProtection);
+    on<RemoteStartDrive>(_onRemoteStartDrive);
+    on<SetPreconditioningMax>(_onSetPreconditioningMax);
   }
 
   /// Converts raw exception messages into user-friendly strings.
@@ -985,6 +1079,101 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleBlocState> {
     } catch (e) {
       debugPrint('VehicleBloc: Fleet Telemetry configuration failed: $e');
       emit(state.copyWith(status: VehicleStatus.error, error: 'Fleet Telemetry setup failed: $e'));
+    }
+  }
+
+  Future<void> _onWindowControl(WindowControl event, Emitter<VehicleBlocState> emit) async {
+    try {
+      await _repository.windowControl(event.vehicleId, event.command);
+    } catch (e) {
+      emit(state.copyWith(commandError: _userFriendlyError(e)));
+    }
+  }
+
+  Future<void> _onMediaTogglePlayback(MediaTogglePlayback event, Emitter<VehicleBlocState> emit) async {
+    try {
+      await _repository.mediaCommand(event.vehicleId, 'media_toggle_playback');
+    } catch (e) {
+      emit(state.copyWith(commandError: _userFriendlyError(e)));
+    }
+  }
+
+  Future<void> _onMediaNextTrack(MediaNextTrack event, Emitter<VehicleBlocState> emit) async {
+    try {
+      await _repository.mediaCommand(event.vehicleId, 'media_next_track');
+    } catch (e) {
+      emit(state.copyWith(commandError: _userFriendlyError(e)));
+    }
+  }
+
+  Future<void> _onMediaPrevTrack(MediaPrevTrack event, Emitter<VehicleBlocState> emit) async {
+    try {
+      await _repository.mediaCommand(event.vehicleId, 'media_prev_track');
+    } catch (e) {
+      emit(state.copyWith(commandError: _userFriendlyError(e)));
+    }
+  }
+
+  Future<void> _onMediaVolumeUp(MediaVolumeUp event, Emitter<VehicleBlocState> emit) async {
+    try {
+      await _repository.mediaCommand(event.vehicleId, 'media_volume_up');
+    } catch (e) {
+      emit(state.copyWith(commandError: _userFriendlyError(e)));
+    }
+  }
+
+  Future<void> _onMediaVolumeDown(MediaVolumeDown event, Emitter<VehicleBlocState> emit) async {
+    try {
+      await _repository.mediaCommand(event.vehicleId, 'media_volume_down');
+    } catch (e) {
+      emit(state.copyWith(commandError: _userFriendlyError(e)));
+    }
+  }
+
+  Future<void> _onRemoteBoombox(RemoteBoombox event, Emitter<VehicleBlocState> emit) async {
+    try {
+      await _repository.remoteBoombox(event.vehicleId, event.soundId);
+    } catch (e) {
+      emit(state.copyWith(commandError: _userFriendlyError(e)));
+    }
+  }
+
+  Future<void> _onSetBioweaponMode(SetBioweaponMode event, Emitter<VehicleBlocState> emit) async {
+    final cmdId = '${event.vehicleId}_bioweapon';
+    emit(state.copyWith(loadingCommands: {...state.loadingCommands, cmdId}));
+    try {
+      await _repository.setBioweaponMode(event.vehicleId, event.on);
+      add(RefreshSelectedVehicle());
+    } catch (e) {
+      emit(state.copyWith(commandError: _userFriendlyError(e)));
+    } finally {
+      emit(state.copyWith(loadingCommands: Set.from(state.loadingCommands)..remove(cmdId)));
+    }
+  }
+
+  Future<void> _onSetCabinOverheatProtection(SetCabinOverheatProtection event, Emitter<VehicleBlocState> emit) async {
+    try {
+      await _repository.setCabinOverheatProtection(event.vehicleId, on: event.on, fanOnly: event.fanOnly);
+      add(RefreshSelectedVehicle());
+    } catch (e) {
+      emit(state.copyWith(commandError: _userFriendlyError(e)));
+    }
+  }
+
+  Future<void> _onRemoteStartDrive(RemoteStartDrive event, Emitter<VehicleBlocState> emit) async {
+    try {
+      await _repository.remoteStartDrive(event.vehicleId);
+    } catch (e) {
+      emit(state.copyWith(commandError: _userFriendlyError(e)));
+    }
+  }
+
+  Future<void> _onSetPreconditioningMax(SetPreconditioningMax event, Emitter<VehicleBlocState> emit) async {
+    try {
+      await _repository.setPreconditioningMax(event.vehicleId, event.on);
+      add(RefreshSelectedVehicle());
+    } catch (e) {
+      emit(state.copyWith(commandError: _userFriendlyError(e)));
     }
   }
 }

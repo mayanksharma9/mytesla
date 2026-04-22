@@ -651,4 +651,42 @@ class TeslaApiClient {
       debugPrint('TeslaApiClient: Failed to update region: $e');
     }
   }
+
+  // --- Media Commands ---
+
+  Future<Response> mediaCommand(String vehicleId, String command) async {
+    await _ensureOnline(vehicleId);
+    return await _postSignedCommand(vehicleId, command, {});
+  }
+
+  // --- Boombox ---
+
+  Future<Response> remoteBoombox(String vehicleId, int soundId) async {
+    await _ensureOnline(vehicleId);
+    return await _postSignedCommand(vehicleId, 'remote_boombox', {'sound': soundId});
+  }
+
+  // --- Extra Climate ---
+
+  Future<Response> setBioweaponMode(String vehicleId, bool on) async {
+    await _ensureOnline(vehicleId);
+    return await _postSignedCommand(vehicleId, 'set_bioweapon_mode', {'on': on, 'manual_override': true});
+  }
+
+  Future<Response> setCabinOverheatProtection(String vehicleId, {required bool on, bool fanOnly = false}) async {
+    await _ensureOnline(vehicleId);
+    return await _postSignedCommand(vehicleId, 'set_cabin_overheat_protection', {'on': on, 'fan_only': fanOnly});
+  }
+
+  Future<Response> setPreconditioningMax(String vehicleId, bool on) async {
+    await _ensureOnline(vehicleId);
+    return await _postSignedCommand(vehicleId, 'set_preconditioning_max', {'on': on, 'manual_override': false});
+  }
+
+  // --- Remote Start ---
+
+  Future<Response> remoteStartDrive(String vehicleId) async {
+    await _ensureOnline(vehicleId);
+    return await _postSignedCommand(vehicleId, 'remote_start_drive', {});
+  }
 }

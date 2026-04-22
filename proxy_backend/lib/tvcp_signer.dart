@@ -121,6 +121,16 @@ class TVCPSigner {
       case 'set_sentry_mode':
       case 'set_valet_mode':
       case 'window_control':
+      case 'media_toggle_playback':
+      case 'media_next_track':
+      case 'media_prev_track':
+      case 'media_volume_up':
+      case 'media_volume_down':
+      case 'remote_boombox':
+      case 'set_bioweapon_mode':
+      case 'set_cabin_overheat_protection':
+      case 'set_preconditioning_max':
+      case 'remote_start_drive':
         return Domain.DOMAIN_INFOTAINMENT;
       default:
         return Domain.DOMAIN_INFOTAINMENT;
@@ -325,6 +335,83 @@ class TVCPSigner {
             enabled: params['enable'] as bool? ?? false,
             departureTime: params['departure_time'] as int? ?? 0,
           ),
+        ).writeToBuffer();
+        break;
+
+      // --- Media ---
+      case 'media_toggle_playback':
+        domain = Domain.DOMAIN_INFOTAINMENT;
+        payloadBytes = CarServer.VehicleAction(
+          mediaPlayAction: CarServer.MediaPlayAction(),
+        ).writeToBuffer();
+        break;
+      case 'media_next_track':
+        domain = Domain.DOMAIN_INFOTAINMENT;
+        payloadBytes = CarServer.VehicleAction(
+          mediaNextTrack: CarServer.MediaNextTrack(),
+        ).writeToBuffer();
+        break;
+      case 'media_prev_track':
+        domain = Domain.DOMAIN_INFOTAINMENT;
+        payloadBytes = CarServer.VehicleAction(
+          mediaPreviousTrack: CarServer.MediaPreviousTrack(),
+        ).writeToBuffer();
+        break;
+      case 'media_volume_up':
+        domain = Domain.DOMAIN_INFOTAINMENT;
+        payloadBytes = CarServer.VehicleAction(
+          mediaUpdateVolume: CarServer.MediaUpdateVolume(volumeDelta: 1),
+        ).writeToBuffer();
+        break;
+      case 'media_volume_down':
+        domain = Domain.DOMAIN_INFOTAINMENT;
+        payloadBytes = CarServer.VehicleAction(
+          mediaUpdateVolume: CarServer.MediaUpdateVolume(volumeDelta: -1),
+        ).writeToBuffer();
+        break;
+
+      // --- Extra Climate ---
+      case 'set_bioweapon_mode':
+        domain = Domain.DOMAIN_INFOTAINMENT;
+        payloadBytes = CarServer.VehicleAction(
+          hvacBioweaponModeAction: CarServer.HvacBioweaponModeAction(
+            on: params['on'] as bool? ?? false,
+            manualOverride: params['manual_override'] as bool? ?? false,
+          ),
+        ).writeToBuffer();
+        break;
+      case 'set_cabin_overheat_protection':
+        domain = Domain.DOMAIN_INFOTAINMENT;
+        payloadBytes = CarServer.VehicleAction(
+          setCabinOverheatProtectionAction: CarServer.SetCabinOverheatProtectionAction(
+            on: params['on'] as bool? ?? false,
+            fanOnly: params['fan_only'] as bool? ?? false,
+          ),
+        ).writeToBuffer();
+        break;
+      case 'set_preconditioning_max':
+        domain = Domain.DOMAIN_INFOTAINMENT;
+        payloadBytes = CarServer.VehicleAction(
+          hvacSetPreconditioningMaxAction: CarServer.HvacSetPreconditioningMaxAction(
+            on: params['on'] as bool? ?? false,
+            manualOverride: params['manual_override'] as bool? ?? false,
+          ),
+        ).writeToBuffer();
+        break;
+
+      // --- Remote Start ---
+      case 'remote_start_drive':
+        domain = Domain.DOMAIN_VEHICLE_SECURITY;
+        payloadBytes = VCSEC.UnsignedMessage(
+          rKEAction: VCSEC.RKEAction_E.RKE_ACTION_REMOTE_DRIVE,
+        ).writeToBuffer();
+        break;
+
+      // --- Boombox ---
+      case 'remote_boombox':
+        domain = Domain.DOMAIN_INFOTAINMENT;
+        payloadBytes = CarServer.VehicleAction(
+          boomboxAction: CarServer.BoomboxAction(sound: params['sound'] as int? ?? 0),
         ).writeToBuffer();
         break;
 
