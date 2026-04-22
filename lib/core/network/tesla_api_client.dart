@@ -617,13 +617,89 @@ class TeslaApiClient {
 
   // --- Fleet Telemetry ---
 
-  Future<Response> configureFleetTelemetry(String vehicleId, Map<String, dynamic> config) async {
-    // fleet_telemetry_config is a direct Fleet API call, NOT a signed vehicle command.
-    // It must NOT go through _postSignedCommand / TVCP proxy.
+  /// Configures Fleet Telemetry by routing through the TVCP proxy, which signs
+  /// the config as a JWS token and forwards to Tesla's fleet_telemetry_config_jws
+  /// endpoint. Using [vin] (not vehicleId integer) as required by the API.
+  Future<Response> configureFleetTelemetry(String vin, Map<String, dynamic> config) async {
+    final token = await _storage.read(key: 'access_token');
+    final fleetBaseUrl = _dio.options.baseUrl;
+    final proxyUrl = TeslaConfig.proxyUrl;
+
     return await _dio.post(
-      '/api/1/vehicles/$vehicleId/fleet_telemetry_config',
-      data: {'config': config},
+      '$proxyUrl/api/fleet/telemetry_config',
+      data: {'vin': vin, 'config': config},
+      options: Options(headers: {
+        'Authorization': 'Bearer $token',
+        if (fleetBaseUrl.isNotEmpty) 'X-Fleet-Api-Base-Url': fleetBaseUrl,
+      }),
     );
+  }
+
+  /// Returns the active Fleet Telemetry config for this vehicle.
+  /// [synced] = true means the vehicle has adopted the config.
+  Future<Map<String, dynamic>> getFleetTelemetryConfig(String vin) async {
+    final token = await _storage.read(key: 'access_token');
+    final fleetBaseUrl = _dio.options.baseUrl;
+    final proxyUrl = TeslaConfig.proxyUrl;
+    final response = await _dio.get(
+      '$proxyUrl/api/fleet/telemetry_config/$vin',
+      options: Options(headers: {
+        'Authorization': 'Bearer $token',
+        if (fleetBaseUrl.isNotEmpty) 'X-Fleet-Api-Base-Url': fleetBaseUrl,
+      }),
+    );
+    return (response.data is Map<String, dynamic>)
+        ? response.data as Map<String, dynamic>
+        : {};
+  }
+
+  /// Removes the Fleet Telemetry config from the vehicle.
+  Future<void> deleteFleetTelemetryConfig(String vin) async {
+    final token = await _storage.read(key: 'access_token');
+    final fleetBaseUrl = _dio.options.baseUrl;
+    final proxyUrl = TeslaConfig.proxyUrl;
+    await _dio.delete(
+      '$proxyUrl/api/fleet/telemetry_config/$vin',
+      options: Options(headers: {
+        'Authorization': 'Bearer $token',
+        if (fleetBaseUrl.isNotEmpty) 'X-Fleet-Api-Base-Url': fleetBaseUrl,
+      }),
+    );
+  }
+
+  /// Returns recent Fleet Telemetry errors for this vehicle.
+  Future<Map<String, dynamic>> getFleetTelemetryErrors(String vin) async {
+    final token = await _storage.read(key: 'access_token');
+    final fleetBaseUrl = _dio.options.baseUrl;
+    final proxyUrl = TeslaConfig.proxyUrl;
+    final response = await _dio.get(
+      '$proxyUrl/api/fleet/telemetry_errors/$vin',
+      options: Options(headers: {
+        'Authorization': 'Bearer $token',
+        if (fleetBaseUrl.isNotEmpty) 'X-Fleet-Api-Base-Url': fleetBaseUrl,
+      }),
+    );
+    return (response.data is Map<String, dynamic>)
+        ? response.data as Map<String, dynamic>
+        : {};
+  }
+
+  /// Returns fleet status for one or more VINs (TVCP required, firmware, etc.)
+  Future<Map<String, dynamic>> getFleetStatus(List<String> vins) async {
+    final token = await _storage.read(key: 'access_token');
+    final fleetBaseUrl = _dio.options.baseUrl;
+    final proxyUrl = TeslaConfig.proxyUrl;
+    final response = await _dio.post(
+      '$proxyUrl/api/fleet/status',
+      data: {'vins': vins},
+      options: Options(headers: {
+        'Authorization': 'Bearer $token',
+        if (fleetBaseUrl.isNotEmpty) 'X-Fleet-Api-Base-Url': fleetBaseUrl,
+      }),
+    );
+    return (response.data is Map<String, dynamic>)
+        ? response.data as Map<String, dynamic>
+        : {};
   }
 
   Future<void> updateRegion() async {

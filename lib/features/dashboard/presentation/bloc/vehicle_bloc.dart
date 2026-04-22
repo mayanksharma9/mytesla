@@ -287,6 +287,22 @@ class ConfigureFleetTelemetry extends VehicleEvent {
   List<Object?> get props => [proxyHostname];
 }
 
+class FetchFleetTelemetryConfig extends VehicleEvent {
+  const FetchFleetTelemetryConfig();
+}
+
+class DeleteFleetTelemetryConfig extends VehicleEvent {
+  const DeleteFleetTelemetryConfig();
+}
+
+class FetchFleetTelemetryErrors extends VehicleEvent {
+  const FetchFleetTelemetryErrors();
+}
+
+class FetchFleetStatus extends VehicleEvent {
+  const FetchFleetStatus();
+}
+
 /// Refreshes only the currently selected vehicle's full data.
 /// Faster than [FetchVehicles] post-command because it skips the vehicle list call.
 class RefreshSelectedVehicle extends VehicleEvent {}
@@ -312,6 +328,9 @@ class VehicleBlocState extends Equatable {
   final DateTime? lastSyncTime;
   final List<models.ChargingLocation>? nearbySuperchargers;
   final bool nearbyLoading;
+  final Map<String, dynamic>? fleetTelemetryConfig;
+  final Map<String, dynamic>? fleetTelemetryErrors;
+  final Map<String, dynamic>? fleetStatus;
 
   const VehicleBlocState({
     this.status = VehicleStatus.initial,
@@ -329,6 +348,9 @@ class VehicleBlocState extends Equatable {
     this.lastSyncTime,
     this.nearbySuperchargers,
     this.nearbyLoading = false,
+    this.fleetTelemetryConfig,
+    this.fleetTelemetryErrors,
+    this.fleetStatus,
   });
 
   @override
@@ -347,6 +369,9 @@ class VehicleBlocState extends Equatable {
     lastSyncTime,
     nearbySuperchargers,
     nearbyLoading,
+    fleetTelemetryConfig,
+    fleetTelemetryErrors,
+    fleetStatus,
   ];
 
   VehicleBlocState copyWith({
@@ -366,6 +391,10 @@ class VehicleBlocState extends Equatable {
     DateTime? lastSyncTime,
     List<models.ChargingLocation>? nearbySuperchargers,
     bool? nearbyLoading,
+    Map<String, dynamic>? fleetTelemetryConfig,
+    bool clearFleetTelemetryConfig = false,
+    Map<String, dynamic>? fleetTelemetryErrors,
+    Map<String, dynamic>? fleetStatus,
   }) {
     return VehicleBlocState(
       status: status ?? this.status,
@@ -383,9 +412,12 @@ class VehicleBlocState extends Equatable {
       lastSyncTime: lastSyncTime ?? this.lastSyncTime,
       nearbySuperchargers: nearbySuperchargers ?? this.nearbySuperchargers,
       nearbyLoading: nearbyLoading ?? this.nearbyLoading,
+      fleetTelemetryConfig: clearFleetTelemetryConfig ? null : (fleetTelemetryConfig ?? this.fleetTelemetryConfig),
+      fleetTelemetryErrors: fleetTelemetryErrors ?? this.fleetTelemetryErrors,
+      fleetStatus: fleetStatus ?? this.fleetStatus,
     );
   }
-  
+
 }
 
 // Bloc
@@ -445,6 +477,10 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleBlocState> {
     on<SetCabinOverheatProtection>(_onSetCabinOverheatProtection);
     on<RemoteStartDrive>(_onRemoteStartDrive);
     on<SetPreconditioningMax>(_onSetPreconditioningMax);
+    on<FetchFleetTelemetryConfig>(_onFetchFleetTelemetryConfig);
+    on<DeleteFleetTelemetryConfig>(_onDeleteFleetTelemetryConfig);
+    on<FetchFleetTelemetryErrors>(_onFetchFleetTelemetryErrors);
+    on<FetchFleetStatus>(_onFetchFleetStatus);
   }
 
   /// Converts raw exception messages into user-friendly strings.
@@ -1074,11 +1110,61 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleBlocState> {
       return;
     }
     try {
-      await _repository.configureFleetTelemetry(vehicle.id, event.proxyHostname);
+      // Must pass VIN (not integer vehicleId) — the Fleet API uses VIN everywhere.
+      await _repository.configureFleetTelemetry(vehicle.vin, event.proxyHostname);
       debugPrint('VehicleBloc: Fleet Telemetry configured for VIN ${vehicle.vin} → ${event.proxyHostname}');
     } catch (e) {
       debugPrint('VehicleBloc: Fleet Telemetry configuration failed: $e');
-      emit(state.copyWith(status: VehicleStatus.error, error: 'Fleet Telemetry setup failed: $e'));
+      // Non-fatal — REST polling still works, telemetry is a best-effort enhancement.
+    }
+  }
+
+  Future<void> _onFetchFleetTelemetryConfig(FetchFleetTelemetryConfig event, Emitter<VehicleBlocState> emit) async {
+    final vin = state.selectedVehicle?.vin;
+    if (vin == null) return;
+    try {
+      final config = await _repository.getFleetTelemetryConfig(vin);
+      debugPrint('VehicleBloc: Fleet Telemetry config for $vin: $config');
+      emit(state.copyWith(fleetTelemetryConfig: config));
+    } catch (e) {
+      debugPrint('VehicleBloc: FetchFleetTelemetryConfig failed: $e');
+    }
+  }
+
+  Future<void> _onDeleteFleetTelemetryConfig(DeleteFleetTelemetryConfig event, Emitter<VehicleBlocState> emit) async {
+    final vin = state.selectedVehicle?.vin;
+    if (vin == null) return;
+    try {
+      await _repository.deleteFleetTelemetryConfig(vin);
+      debugPrint('VehicleBloc: Fleet Telemetry config deleted for VIN $vin');
+      emit(state.copyWith(fleetTelemetryConfig: null));
+    } catch (e) {
+      debugPrint('VehicleBloc: DeleteFleetTelemetryConfig failed: $e');
+      emit(state.copyWith(commandError: 'Failed to delete telemetry config: $e'));
+    }
+  }
+
+  Future<void> _onFetchFleetTelemetryErrors(FetchFleetTelemetryErrors event, Emitter<VehicleBlocState> emit) async {
+    final vin = state.selectedVehicle?.vin;
+    if (vin == null) return;
+    try {
+      final errors = await _repository.getFleetTelemetryErrors(vin);
+      debugPrint('VehicleBloc: Fleet Telemetry errors for $vin: $errors');
+      emit(state.copyWith(fleetTelemetryErrors: errors));
+    } catch (e) {
+      debugPrint('VehicleBloc: FetchFleetTelemetryErrors failed: $e');
+    }
+  }
+
+  Future<void> _onFetchFleetStatus(FetchFleetStatus event, Emitter<VehicleBlocState> emit) async {
+    final vin = state.selectedVehicle?.vin;
+    if (vin == null) return;
+    try {
+      final status = await _repository.getFleetStatus([vin]);
+      debugPrint('VehicleBloc: Fleet status for $vin: $status');
+      emit(state.copyWith(fleetStatus: status));
+    } catch (e) {
+      debugPrint('VehicleBloc: FetchFleetStatus failed: $e');
     }
   }
 

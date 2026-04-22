@@ -44,7 +44,11 @@ abstract class VehicleRepository {
   Future<List<domain.TeslaProduct>> getProducts();
 
   // Fleet Telemetry
-  Future<void> configureFleetTelemetry(String vehicleId, String hostname);
+  Future<void> configureFleetTelemetry(String vin, String hostname);
+  Future<Map<String, dynamic>> getFleetTelemetryConfig(String vin);
+  Future<void> deleteFleetTelemetryConfig(String vin);
+  Future<Map<String, dynamic>> getFleetTelemetryErrors(String vin);
+  Future<Map<String, dynamic>> getFleetStatus(List<String> vins);
 
   // Windows & Media
   Future<void> windowControl(String vehicleId, String command);

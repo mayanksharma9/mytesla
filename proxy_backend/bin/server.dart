@@ -240,6 +240,140 @@ void main(List<String> args) async {
     );
   });
 
+  // ---------------------------------------------------------------------------
+  // Fleet Telemetry management routes
+  // ---------------------------------------------------------------------------
+  // These routes proxy Fleet Telemetry API calls from the Flutter app to Tesla,
+  // signing the config with the registered application private key as required.
+
+  /// POST /api/fleet/telemetry_config
+  /// Body: { "vin": "5YJ...", "config": { hostname, ca, fields, port, ... } }
+  ///
+  /// Signs the config with the application private key (ES256 JWS) and forwards
+  /// to Tesla's fleet_telemetry_config_jws endpoint. This is the correct path
+  /// for applications that use the virtual-key (non-legacy CSR) flow.
+  app.post('/api/fleet/telemetry_config', (Request request) async {
+    final authHeader = request.headers['authorization'];
+    if (authHeader == null || !authHeader.startsWith('Bearer ')) {
+      return Response.forbidden('Missing Bearer Token');
+    }
+    final token = authHeader.substring(7);
+    final fleetBaseUrl = request.headers['x-fleet-api-base-url'];
+
+    try {
+      final body = jsonDecode(await request.readAsString()) as Map<String, dynamic>;
+      final vin = body['vin'] as String?;
+      final config = body['config'] as Map<String, dynamic>?;
+      if (vin == null || config == null) {
+        return Response(400, body: jsonEncode({'error': 'Missing vin or config'}),
+            headers: {'Content-Type': 'application/json'});
+      }
+
+      // Add expiry if not provided (48 hours from now)
+      if (!config.containsKey('exp')) {
+        config['exp'] = (DateTime.now().millisecondsSinceEpoch ~/ 1000) + 172800;
+      }
+
+      final jwsToken = SecurityUtils().signFleetConfigJws(config);
+      print('FleetTelemetry: Signed config JWS for VIN $vin, forwarding to Tesla...');
+
+      final result = await teslaApi.postFleetTelemetryConfigJws(
+        jwsToken, [vin], token, fleetBaseUrl: fleetBaseUrl);
+      print('FleetTelemetry: Config response: $result');
+
+      return Response.ok(jsonEncode(result), headers: {'Content-Type': 'application/json'});
+    } catch (e) {
+      print('FleetTelemetry: Config signing/forwarding failed: $e');
+      return Response.internalServerError(
+        body: jsonEncode({'error': e.toString()}),
+        headers: {'Content-Type': 'application/json'},
+      );
+    }
+  });
+
+  /// GET /api/fleet/telemetry_config/<vin>
+  app.get('/api/fleet/telemetry_config/<vin>', (Request request, String vin) async {
+    final authHeader = request.headers['authorization'];
+    if (authHeader == null || !authHeader.startsWith('Bearer ')) {
+      return Response.forbidden('Missing Bearer Token');
+    }
+    try {
+      final result = await teslaApi.getFleetTelemetryConfig(
+        vin, authHeader.substring(7),
+        fleetBaseUrl: request.headers['x-fleet-api-base-url'],
+      );
+      return Response.ok(jsonEncode(result), headers: {'Content-Type': 'application/json'});
+    } catch (e) {
+      return Response.internalServerError(
+        body: jsonEncode({'error': e.toString()}),
+        headers: {'Content-Type': 'application/json'},
+      );
+    }
+  });
+
+  /// DELETE /api/fleet/telemetry_config/<vin>
+  app.delete('/api/fleet/telemetry_config/<vin>', (Request request, String vin) async {
+    final authHeader = request.headers['authorization'];
+    if (authHeader == null || !authHeader.startsWith('Bearer ')) {
+      return Response.forbidden('Missing Bearer Token');
+    }
+    try {
+      final result = await teslaApi.deleteFleetTelemetryConfig(
+        vin, authHeader.substring(7),
+        fleetBaseUrl: request.headers['x-fleet-api-base-url'],
+      );
+      return Response.ok(jsonEncode(result), headers: {'Content-Type': 'application/json'});
+    } catch (e) {
+      return Response.internalServerError(
+        body: jsonEncode({'error': e.toString()}),
+        headers: {'Content-Type': 'application/json'},
+      );
+    }
+  });
+
+  /// GET /api/fleet/telemetry_errors/<vin>
+  app.get('/api/fleet/telemetry_errors/<vin>', (Request request, String vin) async {
+    final authHeader = request.headers['authorization'];
+    if (authHeader == null || !authHeader.startsWith('Bearer ')) {
+      return Response.forbidden('Missing Bearer Token');
+    }
+    try {
+      final result = await teslaApi.getFleetTelemetryErrors(
+        vin, authHeader.substring(7),
+        fleetBaseUrl: request.headers['x-fleet-api-base-url'],
+      );
+      return Response.ok(jsonEncode(result), headers: {'Content-Type': 'application/json'});
+    } catch (e) {
+      return Response.internalServerError(
+        body: jsonEncode({'error': e.toString()}),
+        headers: {'Content-Type': 'application/json'},
+      );
+    }
+  });
+
+  /// POST /api/fleet/status
+  /// Body: { "vins": ["5YJ..."] }
+  app.post('/api/fleet/status', (Request request) async {
+    final authHeader = request.headers['authorization'];
+    if (authHeader == null || !authHeader.startsWith('Bearer ')) {
+      return Response.forbidden('Missing Bearer Token');
+    }
+    try {
+      final body = jsonDecode(await request.readAsString()) as Map<String, dynamic>;
+      final vins = (body['vins'] as List?)?.cast<String>() ?? [];
+      final result = await teslaApi.getFleetStatus(
+        vins, authHeader.substring(7),
+        fleetBaseUrl: request.headers['x-fleet-api-base-url'],
+      );
+      return Response.ok(jsonEncode(result), headers: {'Content-Type': 'application/json'});
+    } catch (e) {
+      return Response.internalServerError(
+        body: jsonEncode({'error': e.toString()}),
+        headers: {'Content-Type': 'application/json'},
+      );
+    }
+  });
+
   // Default Pipeline
   final handler = const Pipeline()
       .addMiddleware(logRequests())
@@ -247,7 +381,7 @@ void main(List<String> args) async {
 
   final portStr = env['PORT'] ?? Platform.environment['PORT'] ?? '8080';
   final port = int.parse(portStr);
-  
+
   final server = await io.serve(handler, '0.0.0.0', port);
   print('TVCP Proxy listening on port ${server.port}');
 }
@@ -602,42 +736,62 @@ String? _telemetryFieldNumToFirestore(int fieldNum) {
 }
 
 /// Maps a JSON telemetry key name (from test/JSON clients) to a Firestore key.
+/// Keys are from Tesla's vehicle_data.proto field names sent by the vehicle.
 String? _telemetryKeyToFirestore(String key) {
   const map = {
+    // Battery
     'BatteryLevel':          'batteryLevel',
-    'Odometer':              'odometer',
-    'VehicleSpeed':          'speed',
-    'ChargingState':         'chargingState',
+    'Soc':                   'batteryLevel',    // alias used in newer firmware
+    'EstBatteryRange':       'estBatteryRange',
+    'EstimatedBatteryRange': 'estBatteryRange',
+    'BatteryRange':          'batteryRange',
+    'IdealBatteryRange':     'idealBatteryRange',
+    'BatteryHeaterOn':       'batteryHeaterOn',
+    // Charging
+    'DetailedChargeState':   'chargingState',   // newer firmware field
+    'ChargingState':         'chargingState',   // legacy field
     'ChargerPower':          'chargerPower',
+    'ChargeAmps':            'chargeCurrentRequest',
+    'ChargeCurrentRequest':  'chargeCurrentRequest',
+    'ChargerVoltage':        'chargerVoltage',
     'ChargeEnergyAdded':     'chargeEnergyAdded',
     'TimeToFullCharge':      'timeToFullCharge',
     'ChargeLimitSoc':        'chargeLimitSoc',
-    'ChargeCurrentRequest':  'chargeCurrentRequest',
+    'ACChargingEnergyIn':    'acChargingEnergyIn',
+    'DCChargingEnergyIn':    'dcChargingEnergyIn',
+    // Drive
+    'VehicleSpeed':          'speed',
+    'Odometer':              'odometer',
+    'Location':              'location',
+    'Heading':               'heading',
+    'Power':                 'power',
+    'Gear':                  'shiftState',
+    // Status
     'Locked':                'isLocked',
     'SentryModeActive':      'isSentryModeOn',
-    'Gear':                  'shiftState',
-    'Location':              'location',
-    'BatteryRange':          'batteryRange',
-    'IdealBatteryRange':     'idealBatteryRange',
-    'InsideTempEstimate':    'insideTemp',
-    'OutsideTempFiltered':   'outsideTemp',
+    'DoorState':             'doorState',
+    'FrontTrunkOpen':        'frontTrunkState',
+    'RearTrunkOpen':         'rearTrunkState',
+    'VehicleName':           'displayName',
+    // Climate
     'InsideTemp':            'insideTemp',
+    'InsideTempEstimate':    'insideTemp',
     'OutsideTemp':           'outsideTemp',
+    'OutsideTempFiltered':   'outsideTemp',
     'HvacAutoMode':          'isClimateOn',
-    'ClimateKeeperMode':     'isClimateOn',
+    'ClimateKeeperMode':     'climateKeeperMode',
     'DriverTempSetting':     'driverTemp',
     'PassengerTempSetting':  'passengerTemp',
-    'Power':                 'power',
-    'Heading':               'heading',
-    'ChargerVoltage':        'chargerVoltage',
-    'BatteryHeaterOn':       'batteryHeaterOn',
     'SeatHeaterLeft':        'seatHeaterLeft',
     'SeatHeaterRight':       'seatHeaterRight',
     'SteeringWheelHeatLevel':'steeringWheelHeater',
-    'FrontTrunkOpen':        'frontTrunkState',
-    'RearTrunkOpen':         'rearTrunkState',
+    // TPMS
+    'TpmsPressureFl':        'tpmsPressureFl',
+    'TpmsPressureFr':        'tpmsPressureFr',
+    'TpmsPressureRl':        'tpmsPressureRl',
+    'TpmsPressureRr':        'tpmsPressureRr',
+    // Meta
     'Version':               'softwareVersion',
-    'EstimatedBatteryRange': 'estBatteryRange',
   };
   return map[key];
 }

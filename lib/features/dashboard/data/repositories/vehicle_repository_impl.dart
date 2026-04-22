@@ -400,43 +400,92 @@ class VehicleRepositoryImpl implements VehicleRepository {
   }
 
   @override
-  Future<void> configureFleetTelemetry(String vehicleId, String hostname) async {
-    // Fields pushed at high frequency for real-time UI updates
+  Future<void> configureFleetTelemetry(String vin, String hostname) async {
+    // Field names must match Tesla's vehicle_data.proto exactly.
+    // "Location" streams lat/lng together. "DetailedChargeState" replaces
+    // the legacy "ChargingState" string. "Gear" is "Gear", not "ShiftState".
+    // Intervals follow the Tesla pricing example for common fields.
     final config = {
       'hostname': hostname,
       'port': 443,
-      'tls': true,
       'fields': {
-        'BatteryLevel': {'interval_seconds': 10},
-        'Soc': {'interval_seconds': 10},
-        'ChargingState': {'interval_seconds': 5},
-        'ChargerPower': {'interval_seconds': 5},
-        'ChargeRate': {'interval_seconds': 5},
-        'VehicleSpeed': {'interval_seconds': 5},
-        'Gear': {'interval_seconds': 5},
-        'Locked': {'interval_seconds': 30},
-        'SentryMode': {'interval_seconds': 30},
-        'ClimateKeeperMode': {'interval_seconds': 30},
-        'InsideTemp': {'interval_seconds': 15},
-        'OutsideTemp': {'interval_seconds': 60},
-        'Latitude': {'interval_seconds': 5},
-        'Longitude': {'interval_seconds': 5},
-        'Heading': {'interval_seconds': 5},
-        'Odometer': {'interval_seconds': 30},
+        // Battery & charging
+        'Soc': {'interval_seconds': 10},                    // state of charge (%)
+        'EstBatteryRange': {'interval_seconds': 60},
+        'DetailedChargeState': {'interval_seconds': 5},     // replaces legacy ChargingState
+        'ChargeAmps': {'interval_seconds': 5},
+        'ChargerVoltage': {'interval_seconds': 5},
+        'TimeToFullCharge': {'interval_seconds': 30},
         'ACChargingEnergyIn': {'interval_seconds': 30},
         'DCChargingEnergyIn': {'interval_seconds': 30},
-        'TimeToFullCharge': {'interval_seconds': 30},
+        // Drive & location
+        'VehicleSpeed': {'interval_seconds': 5},
+        'Location': {'interval_seconds': 10},               // lat/lng combined field
+        'Gear': {'interval_seconds': 5},
+        'Odometer': {'interval_seconds': 60},
+        // Status
+        'Locked': {'interval_seconds': 1},
+        'DoorState': {'interval_seconds': 1},
+        'VehicleName': {'interval_seconds': 60},
+        // Climate
+        'InsideTemp': {'interval_seconds': 30},
+        'OutsideTemp': {'interval_seconds': 60},
+        // TPMS
         'TpmsPressureFl': {'interval_seconds': 120},
         'TpmsPressureFr': {'interval_seconds': 120},
         'TpmsPressureRl': {'interval_seconds': 120},
         'TpmsPressureRr': {'interval_seconds': 120},
       },
+      'delivery_policy': 'latest',
     };
     try {
-      await _apiClient.configureFleetTelemetry(vehicleId, config);
+      // configureFleetTelemetry now routes through the TVCP proxy for JWS signing.
+      // It uses VIN (not vehicleId integer) as required by the API.
+      await _apiClient.configureFleetTelemetry(vin, config);
       debugPrint('VehicleRepository: Fleet Telemetry configured → $hostname');
     } catch (e) {
       debugPrint('VehicleRepository: configureFleetTelemetry failed: $e');
+      rethrow;
+    }
+  }
+
+  @override
+  Future<Map<String, dynamic>> getFleetTelemetryConfig(String vin) async {
+    try {
+      return await _apiClient.getFleetTelemetryConfig(vin);
+    } catch (e) {
+      debugPrint('VehicleRepository: getFleetTelemetryConfig failed: $e');
+      rethrow;
+    }
+  }
+
+  @override
+  Future<void> deleteFleetTelemetryConfig(String vin) async {
+    try {
+      await _apiClient.deleteFleetTelemetryConfig(vin);
+      debugPrint('VehicleRepository: Fleet Telemetry config deleted for VIN $vin');
+    } catch (e) {
+      debugPrint('VehicleRepository: deleteFleetTelemetryConfig failed: $e');
+      rethrow;
+    }
+  }
+
+  @override
+  Future<Map<String, dynamic>> getFleetTelemetryErrors(String vin) async {
+    try {
+      return await _apiClient.getFleetTelemetryErrors(vin);
+    } catch (e) {
+      debugPrint('VehicleRepository: getFleetTelemetryErrors failed: $e');
+      rethrow;
+    }
+  }
+
+  @override
+  Future<Map<String, dynamic>> getFleetStatus(List<String> vins) async {
+    try {
+      return await _apiClient.getFleetStatus(vins);
+    } catch (e) {
+      debugPrint('VehicleRepository: getFleetStatus failed: $e');
       rethrow;
     }
   }
