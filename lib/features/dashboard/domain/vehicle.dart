@@ -80,6 +80,22 @@ class Vehicle extends Equatable {
   final bool useMiles;
   final String? pressureUnit; // "Psi", "Bar", "kPa"
 
+  // Charging Extended (additional fields)
+  final int usableBatteryLevel;      // actual usable SoC (may differ from batteryLevel)
+  final int chargeCurrentRequestMax; // max amps the charger can deliver
+  final bool scheduledChargingPending;
+  final bool fastChargerPresent;
+
+  // Climate Extended
+  final int seatHeaterRearLeft;      // 0-3
+  final int seatHeaterRearRight;     // 0-3
+  final int seatHeaterRearCenter;    // 0-3
+  final int steeringWheelHeatLevel;  // 0=off, 1=low, 3=high
+  final int copTemp;                 // COP target: 0=Low, 1=Med, 2=High
+
+  // Software
+  final bool softwareUpdateScheduled;
+
   const Vehicle({
     required this.id,
     required this.vehicleId,
@@ -149,6 +165,19 @@ class Vehicle extends Equatable {
     this.useFahrenheit = false,
     this.useMiles = false,
     this.pressureUnit = 'Psi',
+    // Charging Extended
+    this.usableBatteryLevel = 0,
+    this.chargeCurrentRequestMax = 48,
+    this.scheduledChargingPending = false,
+    this.fastChargerPresent = false,
+    // Climate Extended
+    this.seatHeaterRearLeft = 0,
+    this.seatHeaterRearRight = 0,
+    this.seatHeaterRearCenter = 0,
+    this.steeringWheelHeatLevel = 0,
+    this.copTemp = 0,
+    // Software
+    this.softwareUpdateScheduled = false,
   });
 
   @override
@@ -213,6 +242,16 @@ class Vehicle extends Equatable {
         useFahrenheit,
         useMiles,
         pressureUnit,
+        usableBatteryLevel,
+        chargeCurrentRequestMax,
+        scheduledChargingPending,
+        fastChargerPresent,
+        seatHeaterRearLeft,
+        seatHeaterRearRight,
+        seatHeaterRearCenter,
+        steeringWheelHeatLevel,
+        copTemp,
+        softwareUpdateScheduled,
       ];
 
   Vehicle copyWith({
@@ -276,6 +315,16 @@ class Vehicle extends Equatable {
     bool? useFahrenheit,
     bool? useMiles,
     String? pressureUnit,
+    int? usableBatteryLevel,
+    int? chargeCurrentRequestMax,
+    bool? scheduledChargingPending,
+    bool? fastChargerPresent,
+    int? seatHeaterRearLeft,
+    int? seatHeaterRearRight,
+    int? seatHeaterRearCenter,
+    int? steeringWheelHeatLevel,
+    int? copTemp,
+    bool? softwareUpdateScheduled,
   }) {
     return Vehicle(
       id: id ?? this.id,
@@ -338,6 +387,16 @@ class Vehicle extends Equatable {
       useFahrenheit: useFahrenheit ?? this.useFahrenheit,
       useMiles: useMiles ?? this.useMiles,
       pressureUnit: pressureUnit ?? this.pressureUnit,
+      usableBatteryLevel: usableBatteryLevel ?? this.usableBatteryLevel,
+      chargeCurrentRequestMax: chargeCurrentRequestMax ?? this.chargeCurrentRequestMax,
+      scheduledChargingPending: scheduledChargingPending ?? this.scheduledChargingPending,
+      fastChargerPresent: fastChargerPresent ?? this.fastChargerPresent,
+      seatHeaterRearLeft: seatHeaterRearLeft ?? this.seatHeaterRearLeft,
+      seatHeaterRearRight: seatHeaterRearRight ?? this.seatHeaterRearRight,
+      seatHeaterRearCenter: seatHeaterRearCenter ?? this.seatHeaterRearCenter,
+      steeringWheelHeatLevel: steeringWheelHeatLevel ?? this.steeringWheelHeatLevel,
+      copTemp: copTemp ?? this.copTemp,
+      softwareUpdateScheduled: softwareUpdateScheduled ?? this.softwareUpdateScheduled,
     );
   }
 
@@ -402,5 +461,18 @@ class Vehicle extends Equatable {
         'use_fahrenheit': useFahrenheit,
         'use_miles': useMiles,
         'pressure_unit': pressureUnit,
+        // Extended charging
+        'usable_battery_level': usableBatteryLevel,
+        'charge_current_request_max': chargeCurrentRequestMax,
+        'scheduled_charging_pending': scheduledChargingPending,
+        'fast_charger_present': fastChargerPresent,
+        // Extended climate
+        'seat_heater_rear_left': seatHeaterRearLeft,
+        'seat_heater_rear_right': seatHeaterRearRight,
+        'seat_heater_rear_center': seatHeaterRearCenter,
+        'steering_wheel_heat_level': steeringWheelHeatLevel,
+        'cop_temp': copTemp,
+        // Software
+        'software_update_scheduled': softwareUpdateScheduled,
       };
 }

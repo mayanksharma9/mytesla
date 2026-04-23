@@ -11,7 +11,7 @@ import 'package:voltride/features/telemetry/data/services/trip_detection_service
 
 class VehicleRepositoryImpl implements VehicleRepository {
   final TeslaApiClient _apiClient;
-  
+
   // Hive Boxes
   final Box<BatterySnapshot> _batteryBox;
   final Box<DriveSession> _tripBox;
@@ -19,8 +19,12 @@ class VehicleRepositoryImpl implements VehicleRepository {
   final Box<VehicleCache> _vehicleCacheBox;
   final TripDetectionService _tripDetectionService;
 
+  /// In-memory cache of vehicle metadata (id → TeslaVehicle) populated by
+  /// getVehicles(). Allows getVehicleData() to avoid a second API call.
+  final Map<String, TeslaVehicle> _vehicleMetaCache = {};
+
   VehicleRepositoryImpl(
-    this._apiClient, 
+    this._apiClient,
     this._batteryBox,
     this._tripBox,
     this._chargeBox,
@@ -35,6 +39,10 @@ class VehicleRepositoryImpl implements VehicleRepository {
   Future<List<Vehicle>> getVehicles() async {
     try {
       final response = await _apiClient.getVehicles();
+      // Populate meta cache so getVehicleData() can avoid a second API call.
+      for (final v in response.response) {
+        _vehicleMetaCache[v.id] = v;
+      }
       return response.response.map(_mapBasicTeslaVehicleToDomain).toList();
     } catch (e) {
       rethrow;
@@ -45,9 +53,20 @@ class VehicleRepositoryImpl implements VehicleRepository {
   Future<Vehicle> getVehicleData(String vehicleId, [int retryCount = 0]) async {
     try {
       final dataResponse = await _apiClient.getVehicleData(vehicleId);
-      final vehiclesResponse = await _apiClient.getVehicles();
 
-      final teslaVehicle = vehiclesResponse.response.firstWhere((v) => v.id == vehicleId);
+      // Use cached vehicle metadata to avoid a redundant getVehicles() call.
+      // If the cache is empty (e.g. first cold start), fetch and populate it.
+      TeslaVehicle teslaVehicle;
+      if (_vehicleMetaCache.containsKey(vehicleId)) {
+        teslaVehicle = _vehicleMetaCache[vehicleId]!;
+      } else {
+        final vehiclesResponse = await _apiClient.getVehicles();
+        for (final v in vehiclesResponse.response) {
+          _vehicleMetaCache[v.id] = v;
+        }
+        teslaVehicle = vehiclesResponse.response.firstWhere((v) => v.id == vehicleId);
+      }
+
       final vehicle = _mapTeslaVehicleDataToDomain(teslaVehicle, dataResponse.response);
 
       // Use VIN from data response if available, otherwise from vehicles list
@@ -184,6 +203,19 @@ class VehicleRepositoryImpl implements VehicleRepository {
           useFahrenheit: json['use_fahrenheit'] ?? false,
           useMiles: json['use_miles'] ?? false,
           pressureUnit: json['pressure_unit'],
+          // Extended charging
+          usableBatteryLevel: (json['usable_battery_level'] as num?)?.toInt() ?? 0,
+          chargeCurrentRequestMax: (json['charge_current_request_max'] as num?)?.toInt() ?? 48,
+          scheduledChargingPending: json['scheduled_charging_pending'] ?? false,
+          fastChargerPresent: json['fast_charger_present'] ?? false,
+          // Extended climate
+          seatHeaterRearLeft: (json['seat_heater_rear_left'] as num?)?.toInt() ?? 0,
+          seatHeaterRearRight: (json['seat_heater_rear_right'] as num?)?.toInt() ?? 0,
+          seatHeaterRearCenter: (json['seat_heater_rear_center'] as num?)?.toInt() ?? 0,
+          steeringWheelHeatLevel: (json['steering_wheel_heat_level'] as num?)?.toInt() ?? 0,
+          copTemp: (json['cop_temp'] as num?)?.toInt() ?? 0,
+          // Software
+          softwareUpdateScheduled: json['software_update_scheduled'] ?? false,
         );
       }
     } catch (e) {
@@ -359,8 +391,25 @@ class VehicleRepositoryImpl implements VehicleRepository {
   Future<List<ChargingLocation>> getNearbyChargingSites(String vehicleId) async {
     try {
       final response = await _apiClient.getNearbyChargingSites(vehicleId);
-      final List<dynamic> data = response.data['response']['superchargers'] ?? [];
-      return data.map((json) => ChargingLocation.fromJson(json)).toList();
+      // /nearby_charging_sites returns a different schema than /charging/locations.
+      // Manually map to ChargingLocation to avoid null-cast on missing fields.
+      final List<dynamic> superchargers =
+          (response.data['response'] as Map<String, dynamic>?)?['superchargers'] as List<dynamic>? ?? [];
+      return superchargers.asMap().entries.map((entry) {
+        final sc = entry.value as Map<String, dynamic>;
+        final loc = sc['location'] as Map<String, dynamic>?;
+        return ChargingLocation(
+          id: 'nearby_${entry.key}',
+          name: sc['name'] as String?,
+          evseCount: sc['total_stalls'] as int?,
+          coordinates: loc != null
+              ? ChargingCoordinates(
+                  latitude: (loc['lat'] as num).toDouble(),
+                  longitude: (loc['long'] as num).toDouble(),
+                )
+              : null,
+        );
+      }).toList();
     } catch (e) {
       rethrow;
     }
@@ -499,29 +548,37 @@ class VehicleRepositoryImpl implements VehicleRepository {
       if (e.response?.statusCode == 408 || e.response?.statusCode == 405) {
         debugPrint('VehicleRepository: Vehicle $vehicleId is asleep. Waking up...');
         await _apiClient.wakeUp(vehicleId);
-        
-        // Poll for 'online' status (max 60 seconds)
-        for (int i = 0; i < 12; i++) {
-          await Future.delayed(const Duration(seconds: 5));
+
+        // Poll for 'online' status every 10 seconds (max 60 seconds = 6 polls).
+        // Tesla docs recommend waiting 10–60 seconds after wake_up.
+        for (int i = 0; i < 6; i++) {
+          await Future.delayed(const Duration(seconds: 10));
           final vehicles = await _apiClient.getVehicles();
-          final v = vehicles.response.firstWhere((v) => v.id == vehicleId);
-          
+          final v = vehicles.response.firstWhere((v) => v.id == vehicleId,
+              orElse: () => vehicles.response.first);
+
+          // Update meta cache with fresh state
+          _vehicleMetaCache[vehicleId] = v;
+
           if (v.state == 'online') {
             debugPrint('VehicleRepository: Vehicle $vehicleId is now online. Retrying command...');
             return await action();
           }
-          debugPrint('VehicleRepository: Still waiting for $vehicleId to wake up (attempt ${i + 1})...');
+          debugPrint('VehicleRepository: Still waiting for $vehicleId to wake up (attempt ${i + 1}/6)...');
         }
         throw Exception('Vehicle failed to wake up in time.');
       }
-      
-      // 429 means Rate Limit - wait a bit and retry once
+
+      // 429 = Rate limited. Honour the Retry-After / RateLimit-Reset header.
       if (e.response?.statusCode == 429) {
-        debugPrint('VehicleRepository: Rate limited (429). Retrying in 2 seconds...');
-        await Future.delayed(const Duration(seconds: 2));
+        final headers = e.response?.headers;
+        final retryAfterStr = headers?.value('retry-after') ?? headers?.value('ratelimit-reset');
+        final waitSeconds = int.tryParse(retryAfterStr ?? '') ?? 60;
+        debugPrint('VehicleRepository: Rate limited (429). Waiting ${waitSeconds}s before retry...');
+        await Future.delayed(Duration(seconds: waitSeconds.clamp(1, 120)));
         return await action();
       }
-      
+
       rethrow;
     }
   }
@@ -626,6 +683,10 @@ class VehicleRepositoryImpl implements VehicleRepository {
         seatHeaterRight: data.climateState?.seatHeaterRight ?? 0,
         steeringWheelHeater: data.climateState?.steeringWheelHeater ?? false,
         frontDefrosterOn: data.climateState?.frontDefrosterOn ?? false,
+        seatHeaterRearLeft: data.climateState?.seatHeaterRearLeft ?? 0,
+        seatHeaterRearRight: data.climateState?.seatHeaterRearRight ?? 0,
+        seatHeaterRearCenter: data.climateState?.seatHeaterRearCenter ?? 0,
+        steeringWheelHeatLevel: data.climateState?.steeringWheelHeatLevel ?? 0,
         climateKeeperMode: data.climateState?.climateKeeperMode ?? 'off',
         // Vehicle State
         odometer: data.vehicleState?.odometer ?? 0.0,
@@ -645,6 +706,10 @@ class VehicleRepositoryImpl implements VehicleRepository {
         // Charging Extended
         chargePortOpen: data.chargeState?.chargePortDoorOpen ?? false,
         chargeCurrentRequest: data.chargeState?.chargeCurrentRequest ?? 0,
+        usableBatteryLevel: data.chargeState?.usableBatteryLevel ?? (data.chargeState?.batteryLevel ?? 0),
+        chargeCurrentRequestMax: data.chargeState?.chargeCurrentRequestMax ?? 48,
+        scheduledChargingPending: data.chargeState?.scheduledChargingPending ?? false,
+        fastChargerPresent: data.chargeState?.fastChargerPresent ?? false,
         scheduledChargingMode: data.chargeState?.scheduledChargingMode,
         scheduledChargingStartTime: data.chargeState?.scheduledChargingStartTime,
         // Drive State
@@ -666,8 +731,20 @@ class VehicleRepositoryImpl implements VehicleRepository {
   }
 
   @override
-  Future<void> windowControl(String vehicleId, String command) async =>
-      _executeWithWakeUp(vehicleId, () => _apiClient.windowControl(vehicleId, command));
+  Future<void> windowControl(String vehicleId, String command) async {
+    // Tesla requires lat/lon for non-M3 vehicles when closing (range check).
+    // Use vehicle's cached location from the vehicle_data_cache box.
+    double lat = 0, lon = 0;
+    try {
+      final cached = _vehicleMetaCache[vehicleId];
+      if (cached != null) {
+        final cachedVehicle = loadCachedVehicleData(cached.vin);
+        lat = cachedVehicle?.latitude ?? 0;
+        lon = cachedVehicle?.longitude ?? 0;
+      }
+    } catch (_) {}
+    return _executeWithWakeUp(vehicleId, () => _apiClient.windowControl(vehicleId, command, lat: lat, lon: lon));
+  }
 
   @override
   Future<void> mediaCommand(String vehicleId, String command) async =>
@@ -692,6 +769,154 @@ class VehicleRepositoryImpl implements VehicleRepository {
   @override
   Future<void> remoteStartDrive(String vehicleId) async =>
       _executeWithWakeUp(vehicleId, () => _apiClient.remoteStartDrive(vehicleId));
+
+  @override
+  Future<void> chargeMaxRange(String vehicleId) async =>
+      _executeWithWakeUp(vehicleId, () => _apiClient.chargeMaxRange(vehicleId));
+
+  @override
+  Future<void> chargeStandard(String vehicleId) async =>
+      _executeWithWakeUp(vehicleId, () => _apiClient.chargeStandard(vehicleId));
+
+  @override
+  Future<void> addChargeSchedule(String vehicleId, {required String daysOfWeek, required bool enabled, required bool startEnabled, required bool endEnabled, required double lat, required double lon, int? startTime, int? endTime, int? id, bool oneTime = false}) async =>
+      _executeWithWakeUp(vehicleId, () => _apiClient.addChargeSchedule(vehicleId, daysOfWeek: daysOfWeek, enabled: enabled, startEnabled: startEnabled, endEnabled: endEnabled, lat: lat, lon: lon, startTime: startTime, endTime: endTime, id: id, oneTime: oneTime));
+
+  @override
+  Future<void> removeChargeSchedule(String vehicleId, int id) async =>
+      _executeWithWakeUp(vehicleId, () => _apiClient.removeChargeSchedule(vehicleId, id));
+
+  @override
+  Future<void> addPreconditionSchedule(String vehicleId, {required String daysOfWeek, required bool enabled, required double lat, required double lon, required int preconditionTime, int? id, bool oneTime = false}) async =>
+      _executeWithWakeUp(vehicleId, () => _apiClient.addPreconditionSchedule(vehicleId, daysOfWeek: daysOfWeek, enabled: enabled, lat: lat, lon: lon, preconditionTime: preconditionTime, id: id, oneTime: oneTime));
+
+  @override
+  Future<void> removePreconditionSchedule(String vehicleId, int id) async =>
+      _executeWithWakeUp(vehicleId, () => _apiClient.removePreconditionSchedule(vehicleId, id));
+
+  @override
+  Future<void> setSeatCooler(String vehicleId, int seatPosition, int level) async =>
+      _executeWithWakeUp(vehicleId, () => _apiClient.remoteSeatCoolerRequest(vehicleId, seatPosition, level));
+
+  @override
+  Future<void> setCopTemp(String vehicleId, int copTemp) async =>
+      _executeWithWakeUp(vehicleId, () => _apiClient.setCopTemp(vehicleId, copTemp));
+
+  @override
+  Future<void> setSteeringWheelHeatLevel(String vehicleId, int level) async =>
+      _executeWithWakeUp(vehicleId, () => _apiClient.remoteSteeringWheelHeatLevelRequest(vehicleId, level));
+
+  @override
+  Future<void> adjustVolume(String vehicleId, double volume) async =>
+      _executeWithWakeUp(vehicleId, () => _apiClient.adjustVolume(vehicleId, volume));
+
+  @override
+  Future<void> sunRoofControl(String vehicleId, String state) async =>
+      _executeWithWakeUp(vehicleId, () => _apiClient.sunRoofControl(vehicleId, state));
+
+  @override
+  Future<void> scheduleSoftwareUpdate(String vehicleId, int offsetSec) async =>
+      _executeWithWakeUp(vehicleId, () => _apiClient.scheduleSoftwareUpdate(vehicleId, offsetSec));
+
+  @override
+  Future<void> cancelSoftwareUpdate(String vehicleId) async =>
+      _executeWithWakeUp(vehicleId, () => _apiClient.cancelSoftwareUpdate(vehicleId));
+
+  @override
+  Future<void> navigationGpsRequest(String vehicleId, double lat, double lon) async =>
+      _executeWithWakeUp(vehicleId, () => _apiClient.navigationGpsRequest(vehicleId, lat, lon));
+
+  @override
+  Future<void> navigationScRequest(String vehicleId, String superchargerId) async =>
+      _executeWithWakeUp(vehicleId, () => _apiClient.navigationScRequest(vehicleId, superchargerId));
+
+  @override
+  Future<List<Map<String, dynamic>>> getRecentAlerts(String vin) async {
+    try {
+      return await _apiClient.getRecentAlerts(vin);
+    } catch (e) {
+      debugPrint('VehicleRepository: getRecentAlerts failed: $e');
+      return [];
+    }
+  }
+
+  @override
+  Future<Map<String, dynamic>?> getReleaseNotesData(String vin, {bool staged = false}) async {
+    try {
+      return await _apiClient.getReleaseNotesData(vin, staged: staged);
+    } catch (e) {
+      debugPrint('VehicleRepository: getReleaseNotesData failed: $e');
+      return null;
+    }
+  }
+
+  @override
+  Future<Map<String, dynamic>?> getServiceData(String vin) async {
+    try {
+      return await _apiClient.getServiceData(vin);
+    } catch (e) {
+      debugPrint('VehicleRepository: getServiceData failed: $e');
+      return null;
+    }
+  }
+
+  @override
+  Future<bool> getMobileEnabled(String vin) async {
+    try {
+      return await _apiClient.getMobileEnabled(vin);
+    } catch (e) {
+      debugPrint('VehicleRepository: getMobileEnabled failed: $e');
+      return true;
+    }
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> getDrivers(String vin) async {
+    try {
+      return await _apiClient.getDrivers(vin);
+    } catch (e) {
+      debugPrint('VehicleRepository: getDrivers failed: $e');
+      return [];
+    }
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> getUserOrders() async {
+    try {
+      return await _apiClient.getUserOrders();
+    } catch (e) {
+      debugPrint('VehicleRepository: getUserOrders failed: $e');
+      return [];
+    }
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> getEligibleUpgrades(String vin) async {
+    try {
+      return await _apiClient.getEligibleUpgrades(vin);
+    } catch (e) {
+      debugPrint('VehicleRepository: getEligibleUpgrades failed: $e');
+      return [];
+    }
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> getShareInvites(String vin) async {
+    try {
+      return await _apiClient.getShareInvites(vin);
+    } catch (e) {
+      debugPrint('VehicleRepository: getShareInvites failed: $e');
+      return [];
+    }
+  }
+
+  @override
+  Future<Map<String, dynamic>> createShareInvite(String vin) async =>
+      _apiClient.createShareInvite(vin);
+
+  @override
+  Future<void> revokeShareInvite(String vin, String inviteId) async =>
+      _apiClient.revokeShareInvite(vin, inviteId);
 
   double _dynamicToDouble(dynamic value) {
     if (value == null) return 0.0;

@@ -13,6 +13,8 @@ import 'package:voltride/features/charging/presentation/pages/nearby_supercharge
 import 'package:voltride/features/battery/presentation/pages/battery_page.dart';
 import 'package:voltride/features/efficiency/presentation/pages/efficiency_page.dart';
 import 'package:voltride/features/auth/presentation/pages/security_setup_page.dart';
+import 'package:voltride/features/climate/presentation/pages/climate_page.dart';
+import 'package:voltride/features/controls/presentation/pages/controls_page.dart';
 import 'package:voltride/features/settings/presentation/pages/more_page.dart';
 import 'package:voltride/features/settings/presentation/pages/notifications_settings_page.dart';
 import 'package:voltride/features/settings/presentation/pages/maintenance_page.dart';
@@ -130,12 +132,12 @@ class AppRouter {
               ),
             ],
           ),
-          // EFFICIENCY TAB
+          // CLIMATE TAB
           StatefulShellBranch(
             routes: [
               GoRoute(
-                path: '/efficiency',
-                builder: (context, state) => const EfficiencyPage(),
+                path: '/climate',
+                builder: (context, state) => const ClimatePage(),
               ),
             ],
           ),
@@ -146,6 +148,16 @@ class AppRouter {
                 path: '/more',
                 builder: (context, state) => const MorePage(),
                 routes: [
+                  GoRoute(
+                    path: 'controls',
+                    parentNavigatorKey: _rootNavigatorKey,
+                    builder: (context, state) => const ControlsPage(),
+                  ),
+                  GoRoute(
+                    path: 'efficiency',
+                    parentNavigatorKey: _rootNavigatorKey,
+                    builder: (context, state) => const EfficiencyPage(),
+                  ),
                   GoRoute(
                     path: 'analytics',
                     parentNavigatorKey: _rootNavigatorKey,

@@ -10,6 +10,7 @@ import 'core/utils/injection_container.dart' as di;
 import 'features/auth/presentation/bloc/auth_bloc.dart';
 import 'features/dashboard/presentation/bloc/vehicle_bloc.dart';
 import 'features/charging/presentation/bloc/charging_bloc.dart';
+import 'features/charging/data/repositories/charging_history_cache.dart';
 import 'features/dashboard/data/models/tesla_models.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'firebase_options.dart';
@@ -43,6 +44,8 @@ void main() async {
   await Hive.openBox('maintenance');
   // Phantom drain sessions
   await Hive.openBox('phantom_drain');
+  // Charging history API cache
+  await Hive.openBox('charging_history_cache');
   
   await dotenv.load(fileName: ".env");
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
@@ -59,6 +62,9 @@ void main() async {
 
   await di.init();
   await NotificationService().init();
+
+  // Run charging history cache cleanup in background (prune entries > 90 days)
+  ChargingHistoryCache(Hive.box('charging_history_cache')).cleanup();
   runApp(const MyApp());
 }
 

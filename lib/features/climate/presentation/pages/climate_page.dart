@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:voltride/features/dashboard/presentation/pages/home_page.dart' show VirtualKeySheet;
+import 'package:voltride/features/dashboard/presentation/pages/home_page.dart' show showCommandError;
 import '../../../../core/theme/volt_colors.dart';
 import '../../../dashboard/domain/vehicle.dart';
 import '../../../dashboard/presentation/bloc/vehicle_bloc.dart';
@@ -51,26 +51,7 @@ class _ClimatePageState extends State<ClimatePage> {
       body: BlocConsumer<VehicleBloc, VehicleBlocState>(
         listenWhen: (prev, curr) =>
             curr.commandError != null && curr.commandError != prev.commandError,
-        listener: (context, state) {
-          final error = state.commandError!;
-          if (error == 'VIRTUAL_KEY_NOT_ADDED') {
-            showModalBottomSheet(
-              context: context,
-              isScrollControlled: true,
-              backgroundColor: Colors.transparent,
-              builder: (_) => const VirtualKeySheet(),
-            );
-          } else {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(error),
-                backgroundColor: VoltColors.error,
-                behavior: SnackBarBehavior.floating,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-            );
-          }
-        },
+        listener: (context, state) => showCommandError(context, state.commandError!),
         builder: (context, vehicleState) {
           final vehicle = vehicleState.selectedVehicle;
           if (vehicle == null) {
@@ -268,7 +249,100 @@ class _ClimatePageState extends State<ClimatePage> {
 
                 const SizedBox(height: 16),
 
-                // Feature squares grid — live from Tesla API climate_state
+                // --- SEAT HEAT SECTION ---
+                _SectionLabel('SEAT HEATERS', theme),
+                const SizedBox(height: 10),
+                Row(children: [
+                  Expanded(child: _SeatLevelButton(
+                    label: 'Driver',
+                    icon: Icons.event_seat,
+                    level: vehicle.seatHeaterLeft,
+                    onTap: () => context.read<VehicleBloc>().add(
+                      SetSeatHeater(vehicle.id, 0, (vehicle.seatHeaterLeft + 1) % 4)),
+                    isDark: isDark,
+                  )),
+                  const SizedBox(width: 10),
+                  Expanded(child: _SeatLevelButton(
+                    label: 'Passenger',
+                    icon: Icons.event_seat,
+                    level: vehicle.seatHeaterRight,
+                    onTap: () => context.read<VehicleBloc>().add(
+                      SetSeatHeater(vehicle.id, 1, (vehicle.seatHeaterRight + 1) % 4)),
+                    isDark: isDark,
+                  )),
+                ]),
+                const SizedBox(height: 10),
+                Row(children: [
+                  Expanded(child: _SeatLevelButton(
+                    label: 'Rear L',
+                    icon: Icons.airline_seat_recline_normal,
+                    level: vehicle.seatHeaterRearLeft,
+                    onTap: () => context.read<VehicleBloc>().add(
+                      SetSeatHeater(vehicle.id, 2, (vehicle.seatHeaterRearLeft + 1) % 4)),
+                    isDark: isDark,
+                  )),
+                  const SizedBox(width: 10),
+                  Expanded(child: _SeatLevelButton(
+                    label: 'Rear C',
+                    icon: Icons.airline_seat_recline_normal,
+                    level: vehicle.seatHeaterRearCenter,
+                    onTap: () => context.read<VehicleBloc>().add(
+                      SetSeatHeater(vehicle.id, 4, (vehicle.seatHeaterRearCenter + 1) % 4)),
+                    isDark: isDark,
+                  )),
+                  const SizedBox(width: 10),
+                  Expanded(child: _SeatLevelButton(
+                    label: 'Rear R',
+                    icon: Icons.airline_seat_recline_normal,
+                    level: vehicle.seatHeaterRearRight,
+                    onTap: () => context.read<VehicleBloc>().add(
+                      SetSeatHeater(vehicle.id, 5, (vehicle.seatHeaterRearRight + 1) % 4)),
+                    isDark: isDark,
+                  )),
+                ]),
+
+                const SizedBox(height: 20),
+
+                // --- SEAT COOLERS ---
+                _SectionLabel('SEAT COOLERS', theme),
+                const SizedBox(height: 10),
+                Row(children: [
+                  Expanded(child: _SeatLevelButton(
+                    label: 'Driver Cool',
+                    icon: Icons.ac_unit,
+                    level: 0, // cooler level not tracked in state yet — tap to set
+                    onTap: () => _showCoolerPicker(context, vehicle, 1, isDark),
+                    isDark: isDark,
+                    color: VoltColors.info,
+                  )),
+                  const SizedBox(width: 10),
+                  Expanded(child: _SeatLevelButton(
+                    label: 'Passenger Cool',
+                    icon: Icons.ac_unit,
+                    level: 0,
+                    onTap: () => _showCoolerPicker(context, vehicle, 2, isDark),
+                    isDark: isDark,
+                    color: VoltColors.info,
+                  )),
+                ]),
+
+                const SizedBox(height: 20),
+
+                // --- STEERING WHEEL HEAT LEVEL ---
+                _SectionLabel('STEERING WHEEL', theme),
+                const SizedBox(height: 10),
+                _SteeringHeatRow(vehicle: vehicle, isDark: isDark),
+
+                const SizedBox(height: 20),
+
+                // --- COP TEMP ---
+                _SectionLabel('CABIN OVERHEAT PROTECTION', theme),
+                const SizedBox(height: 10),
+                _CopTempRow(vehicle: vehicle, isDark: isDark),
+
+                const SizedBox(height: 20),
+
+                // Additional feature squares
                 GridView.count(
                   crossAxisCount: 4,
                   mainAxisSpacing: 16,
@@ -276,22 +350,6 @@ class _ClimatePageState extends State<ClimatePage> {
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   children: [
-                    _FeatureSquare(
-                      icon: Icons.event_seat,
-                      label: 'Driver ${vehicle.seatHeaterLeft > 0 ? vehicle.seatHeaterLeft : ""}',
-                      isActive: vehicle.seatHeaterLeft > 0,
-                      onTap: () => context.read<VehicleBloc>().add(
-                        SetSeatHeater(vehicle.id, 0, vehicle.seatHeaterLeft > 0 ? 0 : 1),
-                      ),
-                    ),
-                    _FeatureSquare(
-                      icon: Icons.event_seat,
-                      label: 'Psngr ${vehicle.seatHeaterRight > 0 ? vehicle.seatHeaterRight : ""}',
-                      isActive: vehicle.seatHeaterRight > 0,
-                      onTap: () => context.read<VehicleBloc>().add(
-                        SetSeatHeater(vehicle.id, 1, vehicle.seatHeaterRight > 0 ? 0 : 1),
-                      ),
-                    ),
                     _FeatureSquare(
                       icon: Icons.heat_pump,
                       label: 'Steering',
@@ -301,6 +359,19 @@ class _ClimatePageState extends State<ClimatePage> {
                       icon: Icons.window,
                       label: 'Defrost',
                       isActive: vehicle.frontDefrosterOn,
+                    ),
+                    _FeatureSquare(
+                      icon: Icons.air,
+                      label: 'Fan ${vehicle.fanStatus > 0 ? vehicle.fanStatus : ""}',
+                      isActive: vehicle.fanStatus > 0,
+                    ),
+                    _FeatureSquare(
+                      icon: Icons.thermostat,
+                      label: 'Climate',
+                      isActive: vehicle.isClimateOn,
+                      onTap: () => context.read<VehicleBloc>().add(
+                        ToggleClimate(vehicle.id, !vehicle.isClimateOn),
+                      ),
                     ),
                   ],
                 ),
@@ -488,6 +559,43 @@ class _ClimatePageState extends State<ClimatePage> {
     );
   }
 
+  void _showCoolerPicker(BuildContext context, Vehicle vehicle, int seatPosition, bool isDark) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1C1C1C) : Colors.white,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              seatPosition == 1 ? 'DRIVER SEAT COOLING' : 'PASSENGER SEAT COOLING',
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900, letterSpacing: 2, color: VoltColors.outline),
+            ),
+            const SizedBox(height: 20),
+            ...List.generate(4, (level) {
+              final labels = ['OFF', 'LOW', 'MEDIUM', 'HIGH'];
+              return ListTile(
+                onTap: () {
+                  context.read<VehicleBloc>().add(SetSeatCooler(vehicle.id, seatPosition, level));
+                  Navigator.pop(context);
+                },
+                title: Text(labels[level], style: const TextStyle(fontWeight: FontWeight.bold)),
+                trailing: level == 0 ? null : Icon(Icons.ac_unit, color: VoltColors.info, size: 18),
+              );
+            }),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
   String _getLowestTirePressure(Vehicle vehicle) {
     final pressures = [
       vehicle.tpmsPressureFl,
@@ -570,6 +678,178 @@ class _FeatureSquare extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+// ============================================================================
+// Section label helper
+// ============================================================================
+Widget _SectionLabel(String text, ThemeData theme) => Text(
+  text,
+  style: theme.textTheme.labelSmall?.copyWith(
+    color: VoltColors.outline,
+    letterSpacing: 2,
+    fontWeight: FontWeight.bold,
+  ),
+);
+
+// ============================================================================
+// Seat Level Button (Heat or Cool — cycles 0→1→2→3→0 on tap)
+// ============================================================================
+class _SeatLevelButton extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final int level;        // 0=off, 1=low, 2=med, 3=high
+  final VoidCallback onTap;
+  final bool isDark;
+  final Color? color;
+
+  const _SeatLevelButton({
+    required this.label,
+    required this.icon,
+    required this.level,
+    required this.onTap,
+    required this.isDark,
+    this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final activeColor = color ?? VoltColors.primary;
+    final isOn = level > 0;
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
+        decoration: BoxDecoration(
+          color: isOn
+              ? activeColor.withValues(alpha: 0.12)
+              : (isDark ? VoltColors.surfaceElevatedDark : VoltColors.surfaceContainerLowest),
+          borderRadius: BorderRadius.circular(16),
+          border: isOn ? Border.all(color: activeColor.withValues(alpha: 0.3)) : null,
+        ),
+        child: Column(children: [
+          Icon(icon, color: isOn ? activeColor : VoltColors.onSurfaceVariant, size: 20),
+          const SizedBox(height: 6),
+          Text(
+            label,
+            style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 0.5,
+                color: isOn ? activeColor : VoltColors.onSurfaceVariant),
+          ),
+          const SizedBox(height: 6),
+          // Level indicator dots
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(3, (i) => Container(
+              width: 6, height: 6,
+              margin: const EdgeInsets.symmetric(horizontal: 2),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: i < level ? activeColor : (isDark ? Colors.white10 : Colors.black12),
+              ),
+            )),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
+// ============================================================================
+// Steering Wheel Heat Level Row: OFF / LOW / HIGH
+// ============================================================================
+class _SteeringHeatRow extends StatelessWidget {
+  final Vehicle vehicle;
+  final bool isDark;
+  const _SteeringHeatRow({required this.vehicle, required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
+    // level: 0=off, 1=low, 3=high (Tesla skips 2)
+    final levels = [
+      (value: 0, label: 'OFF'),
+      (value: 1, label: 'LOW'),
+      (value: 3, label: 'HIGH'),
+    ];
+
+    return Row(children: levels.map((l) {
+      final isActive = vehicle.steeringWheelHeatLevel == l.value;
+      return Expanded(child: GestureDetector(
+        onTap: () => context.read<VehicleBloc>().add(
+          SetSteeringWheelHeatLevel(vehicle.id, l.value)),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          margin: const EdgeInsets.only(right: 8),
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: isActive
+                ? VoltColors.primary.withValues(alpha: 0.12)
+                : (isDark ? VoltColors.surfaceElevatedDark : VoltColors.surfaceContainerLowest),
+            borderRadius: BorderRadius.circular(12),
+            border: isActive ? Border.all(color: VoltColors.primary.withValues(alpha: 0.4)) : null,
+          ),
+          child: Column(children: [
+            Icon(Icons.heat_pump,
+                color: isActive ? VoltColors.primary : VoltColors.onSurfaceVariant, size: 18),
+            const SizedBox(height: 4),
+            Text(l.label,
+                style: TextStyle(
+                    fontSize: 9, fontWeight: FontWeight.w800,
+                    color: isActive ? VoltColors.primary : VoltColors.onSurfaceVariant)),
+          ]),
+        ),
+      ));
+    }).toList());
+  }
+}
+
+// ============================================================================
+// COP Temp Row: LOW / MEDIUM / HIGH
+// ============================================================================
+class _CopTempRow extends StatelessWidget {
+  final Vehicle vehicle;
+  final bool isDark;
+  const _CopTempRow({required this.vehicle, required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
+    // 0=Low/90°F, 1=Medium/95°F, 2=High/100°F
+    final levels = [
+      (value: 0, label: 'LOW', sub: '90°F'),
+      (value: 1, label: 'MED', sub: '95°F'),
+      (value: 2, label: 'HIGH', sub: '100°F'),
+    ];
+
+    return Row(children: levels.map((l) {
+      final isActive = vehicle.copTemp == l.value;
+      return Expanded(child: GestureDetector(
+        onTap: () => context.read<VehicleBloc>().add(SetCopTemp(vehicle.id, l.value)),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          margin: const EdgeInsets.only(right: 8),
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: isActive
+                ? VoltColors.warning.withValues(alpha: 0.15)
+                : (isDark ? VoltColors.surfaceElevatedDark : VoltColors.surfaceContainerLowest),
+            borderRadius: BorderRadius.circular(12),
+            border: isActive ? Border.all(color: VoltColors.warning.withValues(alpha: 0.5)) : null,
+          ),
+          child: Column(children: [
+            Icon(Icons.thermostat,
+                color: isActive ? VoltColors.warning : VoltColors.onSurfaceVariant, size: 18),
+            const SizedBox(height: 4),
+            Text(l.label,
+                style: TextStyle(
+                    fontSize: 9, fontWeight: FontWeight.w800,
+                    color: isActive ? VoltColors.warning : VoltColors.onSurfaceVariant)),
+            Text(l.sub,
+                style: const TextStyle(fontSize: 8, color: VoltColors.outline)),
+          ]),
+        ),
+      ));
+    }).toList());
   }
 }
 

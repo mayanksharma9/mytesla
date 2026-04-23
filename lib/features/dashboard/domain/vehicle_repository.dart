@@ -62,7 +62,40 @@ abstract class VehicleRepository {
 
   // Remote Start
   Future<void> remoteStartDrive(String vehicleId);
-  
+
+  // Charging - Max Range / Standard
+  Future<void> chargeMaxRange(String vehicleId);
+  Future<void> chargeStandard(String vehicleId);
+  Future<void> addChargeSchedule(String vehicleId, {required String daysOfWeek, required bool enabled, required bool startEnabled, required bool endEnabled, required double lat, required double lon, int? startTime, int? endTime, int? id, bool oneTime = false});
+  Future<void> removeChargeSchedule(String vehicleId, int id);
+  Future<void> addPreconditionSchedule(String vehicleId, {required String daysOfWeek, required bool enabled, required double lat, required double lon, required int preconditionTime, int? id, bool oneTime = false});
+  Future<void> removePreconditionSchedule(String vehicleId, int id);
+
+  // Climate - Extended
+  Future<void> setSeatCooler(String vehicleId, int seatPosition, int level);
+  Future<void> setCopTemp(String vehicleId, int copTemp);
+  Future<void> setSteeringWheelHeatLevel(String vehicleId, int level);
+  Future<void> adjustVolume(String vehicleId, double volume);
+
+  // Vehicle Controls
+  Future<void> sunRoofControl(String vehicleId, String state);
+  Future<void> scheduleSoftwareUpdate(String vehicleId, int offsetSec);
+  Future<void> cancelSoftwareUpdate(String vehicleId);
+  Future<void> navigationGpsRequest(String vehicleId, double lat, double lon);
+  Future<void> navigationScRequest(String vehicleId, String superchargerId);
+
+  // Vehicle Info (free endpoints)
+  Future<List<Map<String, dynamic>>> getRecentAlerts(String vin);
+  Future<Map<String, dynamic>?> getReleaseNotesData(String vin, {bool staged = false});
+  Future<Map<String, dynamic>?> getServiceData(String vin);
+  Future<bool> getMobileEnabled(String vin);
+  Future<List<Map<String, dynamic>>> getDrivers(String vin);
+  Future<List<Map<String, dynamic>>> getUserOrders();
+  Future<List<Map<String, dynamic>>> getEligibleUpgrades(String vin);
+  Future<List<Map<String, dynamic>>> getShareInvites(String vin);
+  Future<Map<String, dynamic>> createShareInvite(String vin);
+  Future<void> revokeShareInvite(String vin, String inviteId);
+
   // History & Analytics (Local)
   Future<List<BatterySnapshot>> getBatteryHistory(String vin);
   Future<List<DriveSession>> getTripHistory(String vin);

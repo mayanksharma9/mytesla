@@ -210,6 +210,15 @@ class ChargeState {
   @JsonKey(name: 'fast_charger_present')
   final bool? fastChargerPresent;
 
+  @JsonKey(name: 'usable_battery_level', fromJson: _dynamicToInt)
+  final int usableBatteryLevel;
+
+  @JsonKey(name: 'charge_current_request_max', fromJson: _dynamicToInt)
+  final int chargeCurrentRequestMax;
+
+  @JsonKey(name: 'scheduled_charging_pending')
+  final bool? scheduledChargingPending;
+
   ChargeState({
     required this.batteryLevel,
     required this.batteryRange,
@@ -233,6 +242,9 @@ class ChargeState {
     this.scheduledDepartureTime,
     this.chargePortDoorOpen,
     this.fastChargerPresent,
+    this.usableBatteryLevel = 0,
+    this.chargeCurrentRequestMax = 48,
+    this.scheduledChargingPending,
   });
 
   factory ChargeState.fromJson(Map<String, dynamic> json) => _$ChargeStateFromJson(json);
@@ -272,6 +284,19 @@ class ClimateState {
   @JsonKey(name: 'climate_keeper_mode', fromJson: _dynamicToNullableString)
   final String? climateKeeperMode;
 
+  @JsonKey(name: 'seat_heater_rear_left', fromJson: _dynamicToInt)
+  final int seatHeaterRearLeft;
+
+  @JsonKey(name: 'seat_heater_rear_right', fromJson: _dynamicToInt)
+  final int seatHeaterRearRight;
+
+  @JsonKey(name: 'seat_heater_rear_center', fromJson: _dynamicToInt)
+  final int seatHeaterRearCenter;
+
+  /// Leveled steering wheel heat: 0=off, 1=low, 3=high (no level 2)
+  @JsonKey(name: 'steering_wheel_heat_level', fromJson: _dynamicToInt)
+  final int steeringWheelHeatLevel;
+
   ClimateState({
     required this.insideTemp,
     required this.outsideTemp,
@@ -285,6 +310,10 @@ class ClimateState {
     this.steeringWheelHeater = false,
     this.frontDefrosterOn = false,
     this.climateKeeperMode,
+    this.seatHeaterRearLeft = 0,
+    this.seatHeaterRearRight = 0,
+    this.seatHeaterRearCenter = 0,
+    this.steeringWheelHeatLevel = 0,
   });
 
   factory ClimateState.fromJson(Map<String, dynamic> json) => _$ClimateStateFromJson(json);
@@ -595,9 +624,26 @@ class ChargingHistoryResponse {
   ChargingHistoryResponse({required this.response, required this.count});
 
   factory ChargingHistoryResponse.fromJson(Map<String, dynamic> json) {
-    if (json['response'] == null) json['response'] = [];
-    if (json['count'] == null) json['count'] = 0;
-    return _$ChargingHistoryResponseFromJson(json);
+    // Tesla /dx/charging/history: {data: [...], total_results: N}
+    // Standard Tesla endpoints: {response: [...], count: N}
+    // Handle both formats
+    List<dynamic>? items;
+    if (json['data'] is List) {
+      items = json['data'] as List<dynamic>;
+    } else if (json['response'] is List) {
+      items = json['response'] as List<dynamic>;
+    } else if (json['results'] is List) {
+      items = json['results'] as List<dynamic>;
+    }
+    final total = (json['total_results'] as num?)?.toInt() ??
+        (json['count'] as num?)?.toInt() ??
+        items?.length ??
+        0;
+    final parsed = (items ?? [])
+        .whereType<Map<String, dynamic>>()
+        .map(ChargingHistoryEntry.fromJson)
+        .toList();
+    return ChargingHistoryResponse(response: parsed, count: total);
   }
 
   Map<String, dynamic> toJson() => _$ChargingHistoryResponseToJson(this);
@@ -606,25 +652,30 @@ class ChargingHistoryResponse {
 @HiveType(typeId: 7)
 @JsonSerializable()
 class ChargingHistoryEntry {
+  /// ISO-8601 start timestamp (stored in Hive for offline history).
   @HiveField(0)
   @JsonKey(name: 'charge_start_date_time')
   final String? chargeStartDateTime;
-  
+
+  /// ISO-8601 stop timestamp.
   @HiveField(1)
   @JsonKey(name: 'charge_stop_date_time')
   final String? chargeStopDateTime;
-  
+
+  /// Energy delivered in kWh.
   @HiveField(2)
   @JsonKey(name: 'energy_kwh', fromJson: _dynamicToDouble)
   final double energyKwh;
-  
+
+  /// Total cost in local currency (derived from fees[] if no direct field).
   @HiveField(3)
   @JsonKey(name: 'total_cost', fromJson: _dynamicToDouble)
   final double totalCost;
-  
+
   @HiveField(4)
   final String? vin;
-  
+
+  /// Human-readable site name (e.g. "Tesla Supercharger - Main St").
   @HiveField(5)
   @JsonKey(name: 'location_id')
   final String? locationId;
@@ -632,6 +683,20 @@ class ChargingHistoryEntry {
   @HiveField(6)
   @JsonKey(name: 'session_id', fromJson: _dynamicToNullableString)
   final String? sessionId;
+
+  /// Currency code from fees (e.g. "USD").
+  @HiveField(7)
+  @JsonKey(name: 'currency_code')
+  final String? currencyCode;
+
+  /// Invoices attached to this session — not persisted in Hive (fetched fresh).
+  /// Use [ChargingInvoice.contentId] with getChargingInvoice().
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final List<ChargingInvoice> invoices;
+
+  /// Individual fee line-items — not persisted in Hive.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final List<ChargingFee> fees;
 
   ChargingHistoryEntry({
     this.chargeStartDateTime,
@@ -641,15 +706,155 @@ class ChargingHistoryEntry {
     this.vin,
     this.locationId,
     this.sessionId,
+    this.currencyCode,
+    this.invoices = const [],
+    this.fees = const [],
   });
 
-  // Compatibility getters for existing UI
   String get date => chargeStartDateTime ?? '';
   double get energyDelivered => energyKwh;
-  String get locationName => locationId ?? 'Tesla Station';
+  String get locationName => locationId ?? 'Tesla Supercharger';
 
-  factory ChargingHistoryEntry.fromJson(Map<String, dynamic> json) => _$ChargingHistoryEntryFromJson(json);
+  factory ChargingHistoryEntry.fromJson(Map<String, dynamic> json) {
+    // Tesla Fleet API /dx/charging/history exact field names (confirmed from live response):
+    //   sessionId, vin, siteLocationName, chargeStartDateTime, chargeStopDateTime,
+    //   countryCode, fees[]{sessionFeeId, feeType, currencyCode, usageBase, totalDue,
+    //                        netDue, uom, isPaid, status, rateBase, pricingType}
+
+    // --- Timestamps (Tesla sends camelCase) ---
+    final startRaw = json['chargeStartDateTime'] ??
+        json['date_started'] ??
+        json['charge_start_date_time'];
+    final stopRaw = json['chargeStopDateTime'] ??
+        json['date_stopped'] ??
+        json['charge_stop_date_time'];
+
+    // --- Parse fees first — energy & cost both come from the fees array ---
+    final rawFees = json['fees'] as List<dynamic>? ?? [];
+    final feeList = rawFees
+        .map((e) => ChargingFee.fromJson(e as Map<String, dynamic>))
+        .toList();
+
+    // Energy kWh: usageBase on the CHARGING fee (uom: "kwh")
+    double energyKwh = _dynamicToDouble(
+      json['total_energy_kWh'] ?? json['energyKwh'] ?? json['energy_kwh'] ?? 0,
+    );
+    if (energyKwh == 0) {
+      for (final fee in feeList) {
+        if (fee.feeType.toUpperCase() == 'CHARGING' && fee.usageBase > 0) {
+          energyKwh = fee.usageBase;
+          break;
+        }
+      }
+    }
+
+    // Total cost: sum of totalDue across all PAYMENT-type fees
+    double totalCost = _dynamicToDouble(
+      json['total_cost'] ?? json['totalCost'] ?? 0,
+    );
+    if (totalCost == 0) {
+      totalCost = feeList.fold(0.0, (sum, f) => sum + f.totalDue);
+    }
+
+    // Currency: from first fee that has it
+    final currencyCode = (json['currency_code'] ??
+        json['currencyCode'] ??
+        (feeList.isNotEmpty ? feeList.first.currencyCode : null))
+        ?.toString();
+
+    // --- Location (Tesla sends siteLocationName) ---
+    final locationId = (json['siteLocationName'] ??
+        json['charging_site_name'] ??
+        json['chargingSiteName'] ??
+        json['site_name'] ??
+        json['location_id'])
+        ?.toString();
+
+    // --- Invoices ---
+    final rawInvoices = json['invoices'] as List<dynamic>? ?? [];
+    final invoices = rawInvoices
+        .map((e) => ChargingInvoice.fromJson(e as Map<String, dynamic>))
+        .toList();
+
+    // --- Other fields ---
+    final vin = json['vin']?.toString();
+    final sessionId = json['sessionId']?.toString() ??
+        json['din']?.toString() ??
+        json['session_id']?.toString();
+
+    return ChargingHistoryEntry(
+      chargeStartDateTime: startRaw?.toString(),
+      chargeStopDateTime: stopRaw?.toString(),
+      energyKwh: energyKwh,
+      totalCost: totalCost,
+      vin: vin,
+      locationId: locationId,
+      sessionId: sessionId,
+      currencyCode: currencyCode,
+      invoices: invoices,
+      fees: feeList,
+    );
+  }
+
   Map<String, dynamic> toJson() => _$ChargingHistoryEntryToJson(this);
+}
+
+class ChargingFee {
+  /// e.g. "CHARGING", "CONGESTION", "TAX"
+  final String feeType;
+  /// e.g. "PAYMENT", "NO_CHARGE"
+  final String pricingType;
+  /// kWh used (for CHARGING fee)
+  final double usageBase;
+  /// Rate per unit ($/kWh)
+  final double rateBase;
+  /// Total amount due for this fee line
+  final double totalDue;
+  /// Net amount due after credits
+  final double netDue;
+  final String? currencyCode;
+  final bool isPaid;
+  /// e.g. "PAID", "PENDING"
+  final String? status;
+
+  const ChargingFee({
+    required this.feeType,
+    required this.pricingType,
+    required this.usageBase,
+    required this.rateBase,
+    required this.totalDue,
+    required this.netDue,
+    this.currencyCode,
+    required this.isPaid,
+    this.status,
+  });
+
+  /// Convenience: the charged amount the user actually pays
+  double get amount => totalDue;
+
+  factory ChargingFee.fromJson(Map<String, dynamic> json) => ChargingFee(
+        feeType: (json['feeType'] ?? json['fee_type'] ?? 'CHARGING').toString(),
+        pricingType: (json['pricingType'] ?? json['pricing_type'] ?? '').toString(),
+        usageBase: _dynamicToDouble(json['usageBase'] ?? json['usage_base'] ?? 0),
+        rateBase: _dynamicToDouble(json['rateBase'] ?? json['rate_base'] ?? 0),
+        totalDue: _dynamicToDouble(json['totalDue'] ?? json['total_due'] ?? json['amount'] ?? 0),
+        netDue: _dynamicToDouble(json['netDue'] ?? json['net_due'] ?? json['totalDue'] ?? 0),
+        currencyCode: (json['currencyCode'] ?? json['currency_code'])?.toString(),
+        isPaid: (json['isPaid'] ?? json['is_paid']) as bool? ?? false,
+        status: (json['status'])?.toString(),
+      );
+}
+
+class ChargingInvoice {
+  final String contentId;
+  final String? billingType;
+
+  const ChargingInvoice({required this.contentId, this.billingType});
+
+  factory ChargingInvoice.fromJson(Map<String, dynamic> json) => ChargingInvoice(
+        contentId: (json['content_id'] ?? json['contentId'] ?? '').toString(),
+        billingType: json['billing_type']?.toString(),
+      );
 }
 
 @JsonSerializable()
@@ -1027,7 +1232,26 @@ class ChargingSessionsResponse {
 
   ChargingSessionsResponse({required this.response, required this.count});
 
-  factory ChargingSessionsResponse.fromJson(Map<String, dynamic> json) => _$ChargingSessionsResponseFromJson(json);
+  factory ChargingSessionsResponse.fromJson(Map<String, dynamic> json) {
+    List<dynamic>? items;
+    if (json['data'] is List) {
+      items = json['data'] as List<dynamic>;
+    } else if (json['response'] is List) {
+      items = json['response'] as List<dynamic>;
+    } else if (json['results'] is List) {
+      items = json['results'] as List<dynamic>;
+    }
+    final total = (json['total_results'] as num?)?.toInt() ??
+        (json['count'] as num?)?.toInt() ??
+        items?.length ??
+        0;
+    final parsed = (items ?? [])
+        .whereType<Map<String, dynamic>>()
+        .map(ChargingSessionInfo.fromJson)
+        .toList();
+    return ChargingSessionsResponse(response: parsed, count: total);
+  }
+
   Map<String, dynamic> toJson() => _$ChargingSessionsResponseToJson(this);
 }
 

@@ -17,11 +17,13 @@ class TeslaConfig {
   static const String callbackScheme = 'com.voltride';
   
   // Tesla Auth Endpoints
+  // Per Tesla docs: authorization uses auth.tesla.com, but ALL token calls
+  // (code exchange, refresh) MUST use fleet-auth.prd.vn.cloud.tesla.com.
   static const String authUrl = 'https://auth.tesla.com/oauth2/v3/authorize';
-  static const String tokenUrl = 'https://auth.tesla.com/oauth2/v3/token';
-  
-  // Scopes required for the app.
-  // vehicle_location is required for location_data in vehicle_data and Fleet
+  static const String tokenUrl = 'https://fleet-auth.prd.vn.cloud.tesla.com/oauth2/v3/token';
+
+  // Official Tesla Fleet API scopes (only these are valid).
+  // vehicle_location: required for location_data in vehicle_data and Fleet
   // Telemetry Location field. If the current token lacks this scope the user
   // must log out and back in to obtain a new token.
   static const List<String> scopes = [
@@ -32,8 +34,6 @@ class TeslaConfig {
     'vehicle_location',
     'vehicle_cmds',
     'vehicle_charging_cmds',
-    'charging_history',
-    'charging_sessions',
   ];
 
   static String get scopeString => scopes.join(' ');

@@ -103,13 +103,14 @@ class ChargingHistoryEntryAdapter extends TypeAdapter<ChargingHistoryEntry> {
       vin: fields[4] as String?,
       locationId: fields[5] as String?,
       sessionId: fields[6] as String?,
+      currencyCode: fields[7] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, ChargingHistoryEntry obj) {
     writer
-      ..writeByte(7)
+      ..writeByte(8)
       ..writeByte(0)
       ..write(obj.chargeStartDateTime)
       ..writeByte(1)
@@ -123,7 +124,9 @@ class ChargingHistoryEntryAdapter extends TypeAdapter<ChargingHistoryEntry> {
       ..writeByte(5)
       ..write(obj.locationId)
       ..writeByte(6)
-      ..write(obj.sessionId);
+      ..write(obj.sessionId)
+      ..writeByte(7)
+      ..write(obj.currencyCode);
   }
 
   @override
@@ -633,6 +636,13 @@ ChargeState _$ChargeStateFromJson(Map<String, dynamic> json) => ChargeState(
           _dynamicToNullableInt(json['scheduled_departure_time']),
       chargePortDoorOpen: json['charge_port_door_open'] as bool?,
       fastChargerPresent: json['fast_charger_present'] as bool?,
+      usableBatteryLevel: json['usable_battery_level'] == null
+          ? 0
+          : _dynamicToInt(json['usable_battery_level']),
+      chargeCurrentRequestMax: json['charge_current_request_max'] == null
+          ? 48
+          : _dynamicToInt(json['charge_current_request_max']),
+      scheduledChargingPending: json['scheduled_charging_pending'] as bool?,
     );
 
 Map<String, dynamic> _$ChargeStateToJson(ChargeState instance) =>
@@ -659,6 +669,9 @@ Map<String, dynamic> _$ChargeStateToJson(ChargeState instance) =>
       'scheduled_departure_time': instance.scheduledDepartureTime,
       'charge_port_door_open': instance.chargePortDoorOpen,
       'fast_charger_present': instance.fastChargerPresent,
+      'usable_battery_level': instance.usableBatteryLevel,
+      'charge_current_request_max': instance.chargeCurrentRequestMax,
+      'scheduled_charging_pending': instance.scheduledChargingPending,
     };
 
 ClimateState _$ClimateStateFromJson(Map<String, dynamic> json) => ClimateState(
@@ -679,6 +692,18 @@ ClimateState _$ClimateStateFromJson(Map<String, dynamic> json) => ClimateState(
       steeringWheelHeater: json['steering_wheel_heater'] as bool? ?? false,
       frontDefrosterOn: json['front_defroster_on'] as bool? ?? false,
       climateKeeperMode: _dynamicToNullableString(json['climate_keeper_mode']),
+      seatHeaterRearLeft: json['seat_heater_rear_left'] == null
+          ? 0
+          : _dynamicToInt(json['seat_heater_rear_left']),
+      seatHeaterRearRight: json['seat_heater_rear_right'] == null
+          ? 0
+          : _dynamicToInt(json['seat_heater_rear_right']),
+      seatHeaterRearCenter: json['seat_heater_rear_center'] == null
+          ? 0
+          : _dynamicToInt(json['seat_heater_rear_center']),
+      steeringWheelHeatLevel: json['steering_wheel_heat_level'] == null
+          ? 0
+          : _dynamicToInt(json['steering_wheel_heat_level']),
     );
 
 Map<String, dynamic> _$ClimateStateToJson(ClimateState instance) =>
@@ -695,6 +720,10 @@ Map<String, dynamic> _$ClimateStateToJson(ClimateState instance) =>
       'steering_wheel_heater': instance.steeringWheelHeater,
       'front_defroster_on': instance.frontDefrosterOn,
       'climate_keeper_mode': instance.climateKeeperMode,
+      'seat_heater_rear_left': instance.seatHeaterRearLeft,
+      'seat_heater_rear_right': instance.seatHeaterRearRight,
+      'seat_heater_rear_center': instance.seatHeaterRearCenter,
+      'steering_wheel_heat_level': instance.steeringWheelHeatLevel,
     };
 
 VehicleState _$VehicleStateFromJson(Map<String, dynamic> json) => VehicleState(
@@ -955,6 +984,7 @@ ChargingHistoryEntry _$ChargingHistoryEntryFromJson(
       vin: json['vin'] as String?,
       locationId: json['location_id'] as String?,
       sessionId: _dynamicToNullableString(json['session_id']),
+      currencyCode: json['currency_code'] as String?,
     );
 
 Map<String, dynamic> _$ChargingHistoryEntryToJson(
@@ -967,6 +997,7 @@ Map<String, dynamic> _$ChargingHistoryEntryToJson(
       'vin': instance.vin,
       'location_id': instance.locationId,
       'session_id': instance.sessionId,
+      'currency_code': instance.currencyCode,
     };
 
 TeslaProductResponse _$TeslaProductResponseFromJson(

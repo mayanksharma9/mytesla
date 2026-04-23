@@ -207,6 +207,28 @@ void main(List<String> args) async {
     return Response.ok('OK');
   });
 
+  /// Serves the proxy's EC public key in PEM format at the Tesla well-known path.
+  /// Tesla fetches this URL when registering a virtual key via
+  /// https://tesla.com/_ak/<domain>.
+  /// This allows the proxy URL itself to act as the registered domain.
+  app.get('/.well-known/appspecific/com.tesla.3p.public-key.pem', (Request request) {
+    final rawBytes = SecurityUtils().publicKeyBytes;
+    final oidAlgo = [0x30, 0x13,
+      0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01,
+      0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07
+    ];
+    final bitString = [0x03, rawBytes.length + 1, 0x00, ...rawBytes];
+    final spkiContent = [...oidAlgo, ...bitString];
+    final spki = [0x30, spkiContent.length, ...spkiContent];
+    final b64 = base64Encode(Uint8List.fromList(spki));
+    final lines = <String>[];
+    for (var i = 0; i < b64.length; i += 64) {
+      lines.add(b64.substring(i, i + 64 > b64.length ? b64.length : i + 64));
+    }
+    final pem = '-----BEGIN PUBLIC KEY-----\n${lines.join('\n')}\n-----END PUBLIC KEY-----\n';
+    return Response.ok(pem, headers: {'Content-Type': 'application/x-pem-file'});
+  });
+
   /// Diagnostic endpoint: returns the proxy's EC public key in both hex and
   /// uncompressed-point format. The PEM at
   /// https://thedevelopersharma.com/.well-known/appspecific/com.tesla.3p.public-key.pem

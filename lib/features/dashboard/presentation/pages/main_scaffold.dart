@@ -55,7 +55,7 @@ class MainScaffold extends StatelessWidget {
                 _buildNavItem(context, Icons.home_outlined, 'Home', 0),
                 _buildNavItem(context, Icons.battery_charging_full_outlined, 'Battery', 1),
                 _buildNavItem(context, Icons.ev_station_outlined, 'Charging', 2),
-                _buildNavItem(context, Icons.trending_up, 'Efficiency', 3),
+                _buildNavItem(context, Icons.ac_unit_outlined, 'Climate', 3),
                 _buildNavItem(context, Icons.more_horiz, 'More', 4),
               ],
             ),

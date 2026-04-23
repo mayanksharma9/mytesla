@@ -74,10 +74,32 @@ class TeslaApiClient {
             }
           }
           if (e.response?.statusCode == 408) {
-            debugPrint('TeslaApiClient: 408 Device Unavailable (Vehicle Asleep)');
+            debugPrint('TeslaApiClient: 408 Vehicle Unavailable (asleep or poor connectivity)');
           }
           if (e.response?.statusCode == 429) {
-            debugPrint('TeslaApiClient: 429 Rate Limited');
+            // Respect Retry-After / RateLimit-Reset headers per Tesla docs.
+            final headers = e.response?.headers;
+            final retryAfter = headers?.value('retry-after') ??
+                headers?.value('ratelimit-reset');
+            if (retryAfter != null) {
+              debugPrint('TeslaApiClient: 429 Rate Limited — retry after $retryAfter');
+            } else {
+              debugPrint('TeslaApiClient: 429 Rate Limited');
+            }
+          }
+          if (e.response?.statusCode == 421) {
+            // 421 = Incorrect Region — update region and retry the request once.
+            debugPrint('TeslaApiClient: 421 Incorrect Region — updating region and retrying...');
+            await updateRegion();
+            try {
+              final retryResponse = await _dio.fetch(e.requestOptions);
+              return handler.resolve(retryResponse);
+            } catch (_) {
+              // If retry also fails, fall through and propagate the original error.
+            }
+          }
+          if (e.response?.statusCode == 540) {
+            debugPrint('TeslaApiClient: 540 Device Unexpected Error — vehicle may need reboot, OTA, or service');
           }
           return handler.next(e);
         },
@@ -90,19 +112,17 @@ class TeslaApiClient {
       final refreshToken = await _storage.read(key: 'refresh_token');
       if (refreshToken == null) return false;
 
-      // Use a local clean Dio to avoid interceptor recursion
+      // Use a local clean Dio to avoid interceptor recursion.
+      // Must POST to fleet-auth domain per Tesla docs.
       final tokenDio = Dio();
       final response = await tokenDio.post(
         TeslaConfig.tokenUrl,
         data: {
           'grant_type': 'refresh_token',
           'client_id': TeslaConfig.clientId,
-          'client_secret': TeslaConfig.clientSecret,
           'refresh_token': refreshToken,
         },
-        options: Options(
-          contentType: Headers.formUrlEncodedContentType,
-        ),
+        options: Options(contentType: Headers.formUrlEncodedContentType),
       );
 
       if (response.statusCode == 200) {
@@ -110,7 +130,10 @@ class TeslaApiClient {
         final expiresAt = DateTime.now().add(Duration(seconds: expiresIn)).millisecondsSinceEpoch;
 
         await _storage.write(key: 'access_token', value: response.data['access_token']);
-        await _storage.write(key: 'refresh_token', value: response.data['refresh_token']);
+        // Refresh tokens are single-use — always save the new one.
+        if (response.data['refresh_token'] != null) {
+          await _storage.write(key: 'refresh_token', value: response.data['refresh_token']);
+        }
         await _storage.write(key: 'tesla_expires_at', value: expiresAt.toString());
         return true;
       }
@@ -138,26 +161,6 @@ class TeslaApiClient {
     return false;
   }
 
-  Future<void> _ensureOnline(String vehicleId) async {
-    int attempts = 0;
-    while (attempts < 6) {
-      final response = await getVehicles();
-      final vehicle = response.response.firstWhere((v) => v.id == vehicleId);
-      if (vehicle.state == 'online') {
-        if (attempts > 0) debugPrint('TeslaApiClient: Vehicle is now online.');
-        return;
-      }
-      
-      debugPrint('TeslaApiClient: Vehicle is ${vehicle.state}, waking up (attempt ${attempts + 1})...');
-      if (attempts == 0) {
-        await wakeUp(vehicleId); // Only send the wake up command once
-      }
-      await Future.delayed(const Duration(seconds: 5));
-      attempts++;
-    }
-    debugPrint('TeslaApiClient: Vehicle failed to wake up after $attempts attempts.');
-  }
-
   // --- Vehicle Metadata ---
 
   Future<TeslaVehicleResponse> getVehicles() async {
@@ -172,8 +175,9 @@ class TeslaApiClient {
     // location_data requires vehicle_location scope — omit it from the default
     // poll so existing tokens (without that scope) don't receive 403.
     // Location is covered by Fleet Telemetry (Location field) once configured.
-    // After re-auth with the updated scope list, add location_data back here.
-    const endpoints = 'charge_state;climate_state;drive_state;gui_settings;vehicle_config;vehicle_state';
+    // charge_schedule_data and preconditioning_schedule_data are free endpoints
+    // that return schedule data — required for schedule management features.
+    const endpoints = 'charge_state;climate_state;drive_state;gui_settings;vehicle_config;vehicle_state;charge_schedule_data;preconditioning_schedule_data';
     final response = await _dio.get(
       '/api/1/vehicles/$vehicleId/vehicle_data',
       queryParameters: {'endpoints': endpoints},
@@ -279,8 +283,12 @@ class TeslaApiClient {
                 );
               }
               if (teslaError.toLowerCase().contains('unauthorized')) {
-                // Transient HMAC rejection — proxy will reset and re-handshake automatically.
-                throw Exception('Command rejected by vehicle (Unauthorized). Please try again.');
+                // "Unauthorized" from Tesla means the vehicle rejected the signed command.
+                // If the virtual key IS already added, this means the proxy's private key
+                // doesn't match the public key registered with Tesla — a proxy configuration
+                // issue. Retrying won't help; surface a clear diagnostic immediately.
+                debugPrint('TeslaApiClient: Proxy Unauthorized for $command — proxy signing key mismatch or session expired.');
+                throw Exception('PROXY_AUTH_FAILED');
               }
               throw Exception('Tesla command error: $teslaError');
             }
@@ -291,24 +299,22 @@ class TeslaApiClient {
             final statusCode = e.response?.statusCode;
             final errorBody = e.response?.data;
             debugPrint('TeslaApiClient: Proxy signing/sending failed: $statusCode - $errorBody');
-            
+
             // 403 "vehicle is offline" is commonly returned when the car is sleeping
-            if (statusCode == 403 && errorBody is Map && 
+            if (statusCode == 403 && errorBody is Map &&
                 (errorBody['error'] == 'vehicle is offline' || errorBody['error']?.toString().contains('offline') == true)) {
               proxyAttempts++;
-              if (proxyAttempts >= 5) rethrow; 
-              
+              if (proxyAttempts >= 5) rethrow;
+
               debugPrint('TeslaApiClient: Vehicle reported offline by proxy. Sending explicit wakeUp and retrying...');
               try {
                 await wakeUp(vehicleId);
-              } catch (_) {} 
+              } catch (_) {}
               await Future.delayed(const Duration(seconds: 4));
               continue;
             }
-            
+
             // Virtual key whitelist rejection — permanent error, surface immediately.
-            // Proxy returns 403 for this; legacy proxy may return 500 with the
-            // message in the body. Either way do NOT fall back to direct API.
             final proxyErrMsg = (errorBody is Map ? errorBody['error'] as String? : null) ?? '';
             if (proxyErrMsg.toLowerCase().contains('whitelist') ||
                 proxyErrMsg.toLowerCase().contains('key not on')) {
@@ -318,10 +324,34 @@ class TeslaApiClient {
               );
             }
 
-            // Detect "Not Implemented" or 500 status from proxy and fall back to direct
-            if (statusCode == 501 || statusCode == 500 ||
-                (errorBody is Map && errorBody['type'] == 'UnimplementedError')) {
-              debugPrint('TeslaApiClient: Proxy doesn\'t support $command. Falling back to direct Fleet API...');
+            // 500 "RoutableMessage does not contain session info" — the proxy hasn't
+            // completed a TVCP session handshake with this vehicle yet. This is a
+            // transient state: retry with a delay so the proxy can establish the session.
+            // Do NOT fall back to direct API — that always returns 403 for TVCP vehicles.
+            if (statusCode == 500) {
+              final errMsg = (errorBody is Map ? errorBody['error'] as String? : null) ?? '';
+              if (errMsg.contains('session info') || errMsg.contains('RoutableMessage')) {
+                proxyAttempts++;
+                debugPrint('TeslaApiClient: Proxy session not established for $command (attempt $proxyAttempts). Retrying after delay...');
+                if (proxyAttempts >= 5) {
+                  throw Exception('Vehicle session could not be established. Ensure the virtual key is added and try again.');
+                }
+                await Future.delayed(const Duration(seconds: 5));
+                continue;
+              }
+              // Other 500 errors (e.g. UnimplementedError) — fall back to direct
+              if (errorBody is Map && errorBody['type'] == 'UnimplementedError') {
+                debugPrint('TeslaApiClient: Proxy does not implement $command. Falling back to direct Fleet API...');
+                tryProxy = false;
+                break;
+              }
+              // Unknown 500 — surface it rather than silently falling back
+              rethrow;
+            }
+
+            // 501 Not Implemented — fall back to direct API
+            if (statusCode == 501) {
+              debugPrint('TeslaApiClient: Proxy 501 for $command. Falling back to direct Fleet API...');
               tryProxy = false;
               break;
             }
@@ -331,9 +361,10 @@ class TeslaApiClient {
               rethrow;
             }
           } else {
-            debugPrint('TeslaApiClient: Proxy signing/sending unexpected error: $e');
-            tryProxy = false;
-            break;
+            // Non-Dio exceptions (e.g. our own thrown Exception from body checks above)
+            // must be re-thrown — not silently swallowed into a direct-API fallback.
+            debugPrint('TeslaApiClient: Proxy command $command exception: $e');
+            rethrow;
           }
         }
       }
@@ -367,38 +398,36 @@ class TeslaApiClient {
     }
   }
 
+  // Note: _ensureOnline() has been removed from all command methods.
+  // The proxy's 403 "vehicle offline" handler and the repository's
+  // _executeWithWakeUp() already handle wake-up reactively, which avoids
+  // paying for an extra getVehicles() call before every command.
+
   Future<Response> doorLock(String vehicleId) async {
-    await _ensureOnline(vehicleId);
     return await _postSignedCommand(vehicleId, 'door_lock', {});
   }
 
   Future<Response> doorUnlock(String vehicleId) async {
-    await _ensureOnline(vehicleId);
     return await _postSignedCommand(vehicleId, 'door_unlock', {});
   }
 
   Future<Response> actuateTrunk(String vehicleId, String whichTrunk) async {
-    await _ensureOnline(vehicleId);
     return await _postSignedCommand(vehicleId, 'actuate_trunk', {'which_trunk': whichTrunk});
   }
 
   Future<Response> chargePortDoorOpen(String vehicleId) async {
-    await _ensureOnline(vehicleId);
     return await _postSignedCommand(vehicleId, 'charge_port_door_open', {});
   }
 
   Future<Response> chargePortDoorClose(String vehicleId) async {
-    await _ensureOnline(vehicleId);
     return await _postSignedCommand(vehicleId, 'charge_port_door_close', {});
   }
 
   Future<Response> setSentryMode(String vehicleId, bool on) async {
-    await _ensureOnline(vehicleId);
     return await _postSignedCommand(vehicleId, 'set_sentry_mode', {'on': on});
   }
 
   Future<Response> setValetMode(String vehicleId, bool on, {String? password}) async {
-    await _ensureOnline(vehicleId);
     final data = <String, dynamic>{'on': on};
     if (password != null && password.isNotEmpty) {
       data['password'] = password;
@@ -409,10 +438,9 @@ class TeslaApiClient {
   // --- Climate Commands ---
 
   Future<Response> setTemperature(String vehicleId, double driverTemp, double passengerTemp) async {
-    await _ensureOnline(vehicleId);
     return await _postSignedCommand(
-      vehicleId, 
-      'set_temps', 
+      vehicleId,
+      'set_temps',
       {
         'driver_temp': driverTemp,
         'passenger_temp': passengerTemp,
@@ -421,42 +449,45 @@ class TeslaApiClient {
   }
 
   Future<Response> autoConditioningStart(String vehicleId) async {
-    await _ensureOnline(vehicleId);
     return await _postSignedCommand(vehicleId, 'auto_conditioning_start', {});
   }
 
   Future<Response> autoConditioningStop(String vehicleId) async {
-    await _ensureOnline(vehicleId);
     return await _postSignedCommand(vehicleId, 'auto_conditioning_stop', {});
   }
 
-  Future<Response> remoteSeatHeaterRequest(String vehicleId, int heater, int level) async {
-    await _ensureOnline(vehicleId);
+  Future<Response> remoteSeatHeaterRequest(String vehicleId, int seatPosition, int level) async {
+    // Tesla API param is 'seat_position', not 'heater'.
+    // 0=front left, 1=front right, 2=rear left, 3=rear left back,
+    // 4=rear center, 5=rear right, 6=rear right back, 7=third row left, 8=third row right
     return await _postSignedCommand(
       vehicleId,
       'remote_seat_heater_request',
       {
-        'heater': heater,
+        'seat_position': seatPosition,
         'level': level,
       },
     );
   }
 
-  /// Set climate keeper mode: "dog", "camp", "on", "off"
+  /// Set climate keeper mode.
+  /// Tesla API requires integer: 0=Off, 1=Keep, 2=Dog, 3=Camp.
+  /// [mode] is the domain string ("off", "on", "dog", "camp") — converted here.
   Future<Response> setClimateKeeperMode(String vehicleId, String mode) async {
-    await _ensureOnline(vehicleId);
-    return await _postSignedCommand(vehicleId, 'set_climate_keeper_mode', {'climate_keeper_mode': mode});
+    const modeMap = {'off': 0, 'on': 1, 'dog': 2, 'camp': 3};
+    final modeInt = modeMap[mode.toLowerCase()] ?? 0;
+    return await _postSignedCommand(vehicleId, 'set_climate_keeper_mode', {'climate_keeper_mode': modeInt});
   }
 
-  /// Control windows: "vent" or "close"; optional lat/lon for "close"
-  Future<Response> windowControl(String vehicleId, String command) async {
-    await _ensureOnline(vehicleId);
-    return await _postSignedCommand(vehicleId, 'window_control', {'command': command, 'lat': 0, 'lon': 0});
+  /// Control windows: "vent" or "close".
+  /// For close on non-M3 vehicles, lat/lon must be the user's location to
+  /// confirm they are within range. Pass vehicle's last-known coordinates.
+  Future<Response> windowControl(String vehicleId, String command, {double lat = 0, double lon = 0}) async {
+    return await _postSignedCommand(vehicleId, 'window_control', {'command': command, 'lat': lat, 'lon': lon});
   }
 
   /// Set scheduled charging
   Future<Response> setScheduledCharging(String vehicleId, bool enable, {int? startTime}) async {
-    await _ensureOnline(vehicleId);
     final data = <String, dynamic>{'enable': enable};
     if (startTime != null) data['time'] = startTime;
     return await _postSignedCommand(vehicleId, 'set_scheduled_charging', data);
@@ -464,48 +495,41 @@ class TeslaApiClient {
 
   /// Set speed limit (mph)
   Future<Response> speedLimitSetLimit(String vehicleId, int limitMph) async {
-    await _ensureOnline(vehicleId);
     return await _postSignedCommand(vehicleId, 'speed_limit_set_limit', {'limit_mph': limitMph});
   }
 
   /// Activate speed limit mode (requires PIN)
   Future<Response> speedLimitActivate(String vehicleId, String pin) async {
-    await _ensureOnline(vehicleId);
     return await _postSignedCommand(vehicleId, 'speed_limit_activate', {'pin': pin});
   }
 
   /// Deactivate speed limit mode (requires PIN)
   Future<Response> speedLimitDeactivate(String vehicleId, String pin) async {
-    await _ensureOnline(vehicleId);
     return await _postSignedCommand(vehicleId, 'speed_limit_deactivate', {'pin': pin});
   }
 
   // --- Charging Commands ---
 
   Future<Response> setChargeLimit(String vehicleId, int limit) async {
-    await _ensureOnline(vehicleId);
     return await _postSignedCommand(
-      vehicleId, 
-      'set_charge_limit', 
+      vehicleId,
+      'set_charge_limit',
       {'percent': limit},
     );
   }
 
   Future<Response> chargeStart(String vehicleId) async {
-    await _ensureOnline(vehicleId);
     return await _postSignedCommand(vehicleId, 'charge_start', {});
   }
 
   Future<Response> chargeStop(String vehicleId) async {
-    await _ensureOnline(vehicleId);
     return await _postSignedCommand(vehicleId, 'charge_stop', {});
   }
 
   Future<Response> setChargingAmps(String vehicleId, int amps) async {
-    await _ensureOnline(vehicleId);
     return await _postSignedCommand(
-      vehicleId, 
-      'set_charging_amps', 
+      vehicleId,
+      'set_charging_amps',
       {'charging_amps': amps},
     );
   }
@@ -528,12 +552,10 @@ class TeslaApiClient {
   // --- Alerts ---
 
   Future<Response> flashLights(String vehicleId) async {
-    await _ensureOnline(vehicleId);
     return await _postSignedCommand(vehicleId, 'flash_lights', {});
   }
 
   Future<Response> honkHorn(String vehicleId) async {
-    await _ensureOnline(vehicleId);
     return await _postSignedCommand(vehicleId, 'honk_horn', {});
   }
 
@@ -580,21 +602,37 @@ class TeslaApiClient {
 
   // --- Charging History & Invoices ---
   
-  Future<ChargingHistoryResponse> getChargingHistory({int? page, int? perPage}) async {
+  Future<ChargingHistoryResponse> getChargingHistory({
+    String? vin,
+    int? pageNo,
+    int? pageSize,
+    String? startTime,
+    String? endTime,
+    String? sortBy,
+    String? sortOrder,
+  }) async {
     final queryParams = <String, dynamic>{};
-    if (page != null) queryParams['page'] = page;
-    if (perPage != null) queryParams['per_page'] = perPage;
-    
+    if (vin != null) queryParams['vin'] = vin;
+    if (pageNo != null) queryParams['pageNo'] = pageNo;
+    if (pageSize != null) queryParams['pageSize'] = pageSize;
+    if (startTime != null) queryParams['startTime'] = startTime;
+    if (endTime != null) queryParams['endTime'] = endTime;
+    if (sortBy != null) queryParams['sortBy'] = sortBy;
+    if (sortOrder != null) queryParams['sortOrder'] = sortOrder;
+
     final response = await _dio.get('/api/1/dx/charging/history', queryParameters: queryParams);
     if (response.data == null) {
       throw Exception('TeslaApiClient: getChargingHistory returned null data');
     }
-    return ChargingHistoryResponse.fromJson(response.data as Map<String, dynamic>);
+    final raw = response.data as Map<String, dynamic>;
+    return ChargingHistoryResponse.fromJson(raw);
   }
 
-  Future<List<int>> getChargingInvoice(String sessionIdentifier) async {
+  /// Downloads the PDF invoice for a charging session.
+  /// [contentId] comes from [ChargingHistoryEntry.invoices[*].contentId].
+  Future<List<int>> getChargingInvoice(String contentId) async {
     final response = await _dio.get(
-      '/api/1/dx/charging/invoice/$sessionIdentifier',
+      '/api/1/dx/charging/invoice/$contentId',
       options: Options(responseType: ResponseType.bytes),
     );
     if (response.data == null) {
@@ -603,8 +641,22 @@ class TeslaApiClient {
     return response.data as List<int>;
   }
 
-  Future<ChargingSessionsResponse> getChargingSessions() async {
-    final response = await _dio.get('/api/1/dx/charging/sessions');
+  /// Fetches business/fleet charging sessions (fleet accounts only).
+  Future<ChargingSessionsResponse> getChargingSessions({
+    String? vin,
+    String? dateFrom,
+    String? dateTo,
+    int? limit,
+    int? offset,
+  }) async {
+    final queryParams = <String, dynamic>{};
+    if (vin != null) queryParams['vin'] = vin;
+    if (dateFrom != null) queryParams['date_from'] = dateFrom;
+    if (dateTo != null) queryParams['date_to'] = dateTo;
+    if (limit != null) queryParams['limit'] = limit;
+    if (offset != null) queryParams['offset'] = offset;
+
+    final response = await _dio.get('/api/1/dx/charging/sessions', queryParameters: queryParams);
     if (response.data == null) {
       throw Exception('TeslaApiClient: getChargingSessions returned null data');
     }
@@ -735,38 +787,253 @@ class TeslaApiClient {
   // --- Media Commands ---
 
   Future<Response> mediaCommand(String vehicleId, String command) async {
-    await _ensureOnline(vehicleId);
     return await _postSignedCommand(vehicleId, command, {});
   }
 
   // --- Boombox ---
 
   Future<Response> remoteBoombox(String vehicleId, int soundId) async {
-    await _ensureOnline(vehicleId);
     return await _postSignedCommand(vehicleId, 'remote_boombox', {'sound': soundId});
   }
 
   // --- Extra Climate ---
 
   Future<Response> setBioweaponMode(String vehicleId, bool on) async {
-    await _ensureOnline(vehicleId);
     return await _postSignedCommand(vehicleId, 'set_bioweapon_mode', {'on': on, 'manual_override': true});
   }
 
   Future<Response> setCabinOverheatProtection(String vehicleId, {required bool on, bool fanOnly = false}) async {
-    await _ensureOnline(vehicleId);
     return await _postSignedCommand(vehicleId, 'set_cabin_overheat_protection', {'on': on, 'fan_only': fanOnly});
   }
 
   Future<Response> setPreconditioningMax(String vehicleId, bool on) async {
-    await _ensureOnline(vehicleId);
     return await _postSignedCommand(vehicleId, 'set_preconditioning_max', {'on': on, 'manual_override': false});
   }
 
   // --- Remote Start ---
 
   Future<Response> remoteStartDrive(String vehicleId) async {
-    await _ensureOnline(vehicleId);
     return await _postSignedCommand(vehicleId, 'remote_start_drive', {});
+  }
+
+  // --- Additional Charging Commands ---
+
+  /// Charge to 100% (max range mode). Use sparingly — degrades battery.
+  Future<Response> chargeMaxRange(String vehicleId) async {
+    return await _postSignedCommand(vehicleId, 'charge_max_range', {});
+  }
+
+  /// Reset charge limit to standard (factory default %).
+  Future<Response> chargeStandard(String vehicleId) async {
+    return await _postSignedCommand(vehicleId, 'charge_standard', {});
+  }
+
+  /// Add a recurring or one-time charge schedule (preferred over set_scheduled_charging since fw 2024.26).
+  /// [daysOfWeek] e.g. "All", "Weekdays", "Monday,Wednesday"
+  /// [startTime] and [endTime] are minutes after midnight (e.g. 120 = 2:00 AM)
+  Future<Response> addChargeSchedule(
+    String vehicleId, {
+    required String daysOfWeek,
+    required bool enabled,
+    required bool startEnabled,
+    required bool endEnabled,
+    required double lat,
+    required double lon,
+    int? startTime,
+    int? endTime,
+    int? id,
+    bool oneTime = false,
+  }) async {
+    final data = <String, dynamic>{
+      'days_of_week': daysOfWeek,
+      'enabled': enabled,
+      'start_enabled': startEnabled,
+      'end_enabled': endEnabled,
+      'lat': lat,
+      'lon': lon,
+      'one_time': oneTime,
+    };
+    if (startTime != null) data['start_time'] = startTime;
+    if (endTime != null) data['end_time'] = endTime;
+    if (id != null) data['id'] = id;
+    return await _postSignedCommand(vehicleId, 'add_charge_schedule', data);
+  }
+
+  /// Remove a charge schedule by its ID.
+  Future<Response> removeChargeSchedule(String vehicleId, int id) async {
+    return await _postSignedCommand(vehicleId, 'remove_charge_schedule', {'id': id});
+  }
+
+  /// Add a preconditioning schedule (preferred over set_scheduled_departure since fw 2024.26).
+  /// [preconditionTime] minutes after midnight when conditioning should be complete.
+  Future<Response> addPreconditionSchedule(
+    String vehicleId, {
+    required String daysOfWeek,
+    required bool enabled,
+    required double lat,
+    required double lon,
+    required int preconditionTime,
+    int? id,
+    bool oneTime = false,
+  }) async {
+    final data = <String, dynamic>{
+      'days_of_week': daysOfWeek,
+      'enabled': enabled,
+      'lat': lat,
+      'lon': lon,
+      'precondition_time': preconditionTime,
+      'one_time': oneTime,
+    };
+    if (id != null) data['id'] = id;
+    return await _postSignedCommand(vehicleId, 'add_precondition_schedule', data);
+  }
+
+  /// Remove a preconditioning schedule by its ID.
+  Future<Response> removePreconditionSchedule(String vehicleId, int id) async {
+    return await _postSignedCommand(vehicleId, 'remove_precondition_schedule', {'id': id});
+  }
+
+  // --- Additional Climate Commands ---
+
+  /// Set seat cooling level. Requires climate keeper or preconditioning to be active.
+  /// [seatPosition]: 1=front left, 2=front right
+  /// [level]: 0=off, 1=low, 2=medium, 3=high
+  Future<Response> remoteSeatCoolerRequest(String vehicleId, int seatPosition, int level) async {
+    return await _postSignedCommand(vehicleId, 'remote_seat_cooler_request', {
+      'seat_position': seatPosition,
+      'seat_cooler_level': level,
+    });
+  }
+
+  /// Set Cabin Overheat Protection target temperature.
+  /// [copTemp]: 0=Low (90°F/30°C), 1=Medium (95°F/35°C), 2=High (100°F/40°C)
+  Future<Response> setCopTemp(String vehicleId, int copTemp) async {
+    return await _postSignedCommand(vehicleId, 'set_cop_temp', {'cop_temp': copTemp});
+  }
+
+  /// Set steering wheel heat level (for vehicles that support leveled heat).
+  /// [level]: 0=off, 1=low, 3=high (note: no level 2)
+  Future<Response> remoteSteeringWheelHeatLevelRequest(String vehicleId, int level) async {
+    return await _postSignedCommand(vehicleId, 'remote_steering_wheel_heat_level_request', {'level': level});
+  }
+
+  /// Adjust media volume precisely. [volume] is 0.0 to 11.0.
+  Future<Response> adjustVolume(String vehicleId, double volume) async {
+    return await _postSignedCommand(vehicleId, 'adjust_volume', {'volume': volume.clamp(0.0, 11.0)});
+  }
+
+  // --- Sunroof & HomeLink ---
+
+  /// Control sunroof on equipped vehicles. [state]: "stop", "close", "vent"
+  Future<Response> sunRoofControl(String vehicleId, String state) async {
+    return await _postSignedCommand(vehicleId, 'sun_roof_control', {'state': state});
+  }
+
+  /// Trigger HomeLink (garage door). Requires lat/lon of user and a HomeLink token.
+  Future<Response> triggerHomelink(String vehicleId, double lat, double lon, String token) async {
+    return await _postSignedCommand(vehicleId, 'trigger_homelink', {'lat': lat, 'lon': lon, 'token': token});
+  }
+
+  // --- Navigation ---
+
+  /// Send GPS coordinates to vehicle navigation.
+  Future<Response> navigationGpsRequest(String vehicleId, double lat, double lon, {int order = 0}) async {
+    return await _postSignedCommand(vehicleId, 'navigation_gps_request', {'lat': lat, 'lon': lon, 'order': order});
+  }
+
+  /// Navigate to a Supercharger by its site ID.
+  Future<Response> navigationScRequest(String vehicleId, String id, {int order = 0}) async {
+    return await _postSignedCommand(vehicleId, 'navigation_sc_request', {'id': id, 'order': order});
+  }
+
+  // --- Software Updates ---
+
+  /// Schedule a software update to install [offsetSec] seconds from now.
+  Future<Response> scheduleSoftwareUpdate(String vehicleId, int offsetSec) async {
+    return await _postSignedCommand(vehicleId, 'schedule_software_update', {'offset_sec': offsetSec});
+  }
+
+  /// Cancel a pending software update installation countdown.
+  Future<Response> cancelSoftwareUpdate(String vehicleId) async {
+    return await _postSignedCommand(vehicleId, 'cancel_software_update', {});
+  }
+
+  // --- Vehicle Info Endpoints (free, not billed) ---
+
+  /// Recent vehicle alerts (low fluid, errors, etc).
+  Future<List<Map<String, dynamic>>> getRecentAlerts(String vin) async {
+    final response = await _dio.get('/api/1/vehicles/$vin/recent_alerts');
+    final data = response.data?['response'];
+    if (data == null) return [];
+    if (data is List) return data.cast<Map<String, dynamic>>();
+    return [];
+  }
+
+  /// Firmware release notes. Set [staged] to true for upcoming update notes.
+  Future<Map<String, dynamic>?> getReleaseNotesData(String vin, {bool staged = false}) async {
+    final response = await _dio.get(
+      '/api/1/vehicles/$vin/release_notes',
+      queryParameters: {'staged': staged},
+    );
+    return response.data?['response'] as Map<String, dynamic>?;
+  }
+
+  /// Service status and appointment data for the vehicle.
+  Future<Map<String, dynamic>?> getServiceData(String vin) async {
+    final response = await _dio.get('/api/1/vehicles/$vin/service_data');
+    return response.data?['response'] as Map<String, dynamic>?;
+  }
+
+  /// Check whether mobile access is enabled on the vehicle.
+  Future<bool> getMobileEnabled(String vin) async {
+    final response = await _dio.get('/api/1/vehicles/$vin/mobile_enabled');
+    return response.data?['response'] as bool? ?? false;
+  }
+
+  /// List all drivers who have access to this vehicle (owner only).
+  Future<List<Map<String, dynamic>>> getDrivers(String vin) async {
+    final response = await _dio.get('/api/1/vehicles/$vin/drivers');
+    final data = response.data?['response'];
+    if (data == null) return [];
+    if (data is List) return data.cast<Map<String, dynamic>>();
+    return [];
+  }
+
+  /// Returns the user's active orders (pending deliveries).
+  Future<List<Map<String, dynamic>>> getUserOrders() async {
+    final response = await _dio.get('/api/1/users/orders');
+    final data = response.data?['response'];
+    if (data == null) return [];
+    if (data is List) return data.cast<Map<String, dynamic>>();
+    return [];
+  }
+
+  /// Returns eligible vehicle upgrades (FSD, acceleration boost, etc).
+  Future<List<Map<String, dynamic>>> getEligibleUpgrades(String vin) async {
+    final response = await _dio.get('/api/1/dx/vehicles/upgrades/eligibility', queryParameters: {'vin': vin});
+    final data = response.data?['response'];
+    if (data == null) return [];
+    if (data is List) return data.cast<Map<String, dynamic>>();
+    return [];
+  }
+
+  /// Get share invites for a vehicle.
+  Future<List<Map<String, dynamic>>> getShareInvites(String vin) async {
+    final response = await _dio.get('/api/1/vehicles/$vin/invitations');
+    final data = response.data?['response'];
+    if (data == null) return [];
+    if (data is List) return data.cast<Map<String, dynamic>>();
+    return [];
+  }
+
+  /// Create a 24-hour single-use share invite link.
+  Future<Map<String, dynamic>> createShareInvite(String vin) async {
+    final response = await _dio.post('/api/1/vehicles/$vin/invitations');
+    return response.data?['response'] as Map<String, dynamic>? ?? {};
+  }
+
+  /// Revoke a share invite by its ID.
+  Future<void> revokeShareInvite(String vin, String inviteId) async {
+    await _dio.post('/api/1/vehicles/$vin/invitations/$inviteId/revoke');
   }
 }

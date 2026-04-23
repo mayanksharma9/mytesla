@@ -36,23 +36,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _handleCommandError(BuildContext context, String error) {
-    if (error == 'VIRTUAL_KEY_NOT_ADDED') {
-      showModalBottomSheet(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: Colors.transparent,
-        builder: (_) => const VirtualKeySheet(),
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(error),
-          backgroundColor: VoltColors.error,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        ),
-      );
-    }
+    _showCommandError(context, error);
   }
 
   @override
@@ -137,6 +121,9 @@ class _HomePageState extends State<HomePage> {
                 _buildSectionTitle(context, 'QUICK CONTROLS', 'ACTIVE'),
                 const SizedBox(height: 16),
                 _quickControls(context, state),
+                const SizedBox(height: 32),
+                _SoftwareUpdateBanner(vehicle: vehicle, state: state),
+                _RecentAlertsBanner(vehicle: vehicle, state: state),
                 const SizedBox(height: 40),
                 _buildStatusFooter(vehicle, state.lastSyncTime),
               ],
@@ -914,6 +901,168 @@ class _MainStatusCard extends StatelessWidget {
   }
 }
 
+// ============================================================================
+// Software Update Banner
+// ============================================================================
+class _SoftwareUpdateBanner extends StatelessWidget {
+  final Vehicle vehicle;
+  final VehicleBlocState state;
+  const _SoftwareUpdateBanner({required this.vehicle, required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final hasUpdate = vehicle.softwareUpdateStatus == 'available' ||
+        vehicle.softwareUpdateStatus == 'downloading';
+    final isInstalling = vehicle.softwareUpdateStatus == 'installing';
+
+    if (vehicle.softwareUpdateStatus == null || vehicle.softwareUpdateStatus!.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final isLoading =
+        state.loadingCommands.contains('${vehicle.id}_sw_update');
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isInstalling ? VoltColors.primary.withValues(alpha: 0.3) : VoltColors.warning.withValues(alpha: 0.3),
+          ),
+        ),
+        child: Row(children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: (isInstalling ? VoltColors.primary : VoltColors.warning).withValues(alpha: 0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              isInstalling ? Icons.system_update : Icons.system_update_alt,
+              color: isInstalling ? VoltColors.primary : VoltColors.warning,
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(
+              isInstalling ? 'INSTALLING UPDATE' : 'SOFTWARE UPDATE AVAILABLE',
+              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1.5),
+            ),
+            if (vehicle.softwareUpdateVersion != null) ...[
+              const SizedBox(height: 2),
+              Text(
+                vehicle.softwareUpdateVersion!,
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: VoltColors.primary),
+              ),
+            ],
+            if (isInstalling && vehicle.softwareUpdateProgress > 0) ...[
+              const SizedBox(height: 8),
+              LinearProgressIndicator(
+                value: vehicle.softwareUpdateProgress / 100,
+                color: VoltColors.primary,
+                backgroundColor: Colors.white10,
+              ),
+            ],
+          ])),
+          if (hasUpdate && !isInstalling) ...[
+            const SizedBox(width: 8),
+            ElevatedButton(
+              onPressed: isLoading ? null : () {
+                context.read<VehicleBloc>().add(ScheduleSoftwareUpdate(vehicle.id, 300));
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: VoltColors.warning,
+                foregroundColor: Colors.black,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              child: isLoading
+                  ? const SizedBox(width: 16, height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
+                  : const Text('SCHEDULE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900)),
+            ),
+          ],
+        ]),
+      ),
+      const SizedBox(height: 16),
+    ]);
+  }
+}
+
+// ============================================================================
+// Recent Alerts Banner
+// ============================================================================
+class _RecentAlertsBanner extends StatelessWidget {
+  final Vehicle vehicle;
+  final VehicleBlocState state;
+  const _RecentAlertsBanner({required this.vehicle, required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final alerts = state.recentAlerts;
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+        const Text('VEHICLE ALERTS',
+            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 2, color: VoltColors.outline)),
+        TextButton(
+          onPressed: () =>
+              context.read<VehicleBloc>().add(FetchRecentAlerts(vehicle.vin)),
+          style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: Size.zero),
+          child: const Text('REFRESH',
+              style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 1, color: VoltColors.primary)),
+        ),
+      ]),
+      const SizedBox(height: 8),
+      if (alerts.isEmpty)
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: const Row(children: [
+            Icon(Icons.check_circle_outline, color: VoltColors.success, size: 18),
+            SizedBox(width: 10),
+            Text('No recent alerts', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+          ]),
+        )
+      else
+        ...alerts.take(3).map((alert) {
+          final name = alert['name'] as String? ?? 'Alert';
+          final audience = alert['audience'] as List?;
+          final isDriver = audience?.contains('Driver') ?? true;
+          return Container(
+            width: double.infinity,
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: VoltColors.warning.withValues(alpha: 0.3)),
+            ),
+            child: Row(children: [
+              Icon(isDriver ? Icons.warning_amber_rounded : Icons.info_outline,
+                  color: VoltColors.warning, size: 18),
+              const SizedBox(width: 10),
+              Expanded(child: Text(name,
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                  maxLines: 2, overflow: TextOverflow.ellipsis)),
+            ]),
+          );
+        }),
+      const SizedBox(height: 16),
+    ]);
+  }
+}
+
 /// Resolve the Tesla compositor model code from the VIN.
 /// VIN position 4 (index 3) encodes the model for Tesla vehicles.
 String _buildVehicleImageUrl(Vehicle vehicle) {
@@ -1202,8 +1351,42 @@ class _InsightCard extends StatelessWidget {
 
 /// Bottom sheet shown when a command is rejected because the virtual key for
 /// this app is not registered with the vehicle.
-class VirtualKeySheet extends StatelessWidget {
-  const VirtualKeySheet({super.key});
+/// Central command-error dispatcher — call from any page's BlocListener.
+void showCommandError(BuildContext context, String error) =>
+    _showCommandError(context, error);
+
+void _showCommandError(BuildContext context, String error) {
+  if (error == 'VIRTUAL_KEY_NOT_ADDED') {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => const VirtualKeySheet(),
+    );
+  } else if (error == 'PROXY_KEY_MISMATCH') {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => const ProxyKeyMismatchSheet(),
+    );
+  } else {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(error),
+        backgroundColor: VoltColors.error,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
+  }
+}
+
+// ============================================================================
+// Proxy Key Mismatch Sheet
+// ============================================================================
+class ProxyKeyMismatchSheet extends StatelessWidget {
+  const ProxyKeyMismatchSheet({super.key});
 
   static const _keyUrl = 'https://tesla.com/_ak/thedevelopersharma.com';
 
@@ -1223,43 +1406,217 @@ class VirtualKeySheet extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 40,
-              height: 4,
+              width: 40, height: 4,
               decoration: BoxDecoration(
                 color: theme.colorScheme.outlineVariant,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
             const SizedBox(height: 20),
-            const Icon(Icons.key_off_rounded, size: 44, color: VoltColors.error),
+            const Icon(Icons.sync_problem_rounded, size: 44, color: VoltColors.warning),
             const SizedBox(height: 10),
+            Text('Command Signing Key Mismatch',
+                style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+                textAlign: TextAlign.center),
+            const SizedBox(height: 8),
             Text(
-              'Virtual Key Required',
-              style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'This app needs a virtual key registered on your vehicle before it can send commands.',
+              'Your vehicle is rejecting commands because the proxy server\'s signing key doesn\'t match the virtual key registered on the vehicle.',
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),
             const SizedBox(height: 16),
-            _Step(number: '1', text: 'Tap the button below — it will open the Tesla app on your phone.'),
+            // Root cause box
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: VoltColors.warning.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: VoltColors.warning.withValues(alpha: 0.3)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(children: [
+                    const Icon(Icons.info_outline_rounded, size: 16, color: VoltColors.warning),
+                    const SizedBox(width: 6),
+                    Text('If re-adding still doesn\'t fix it:',
+                        style: theme.textTheme.labelMedium?.copyWith(
+                            color: VoltColors.warning, fontWeight: FontWeight.w700)),
+                  ]),
+                  const SizedBox(height: 6),
+                  Text(
+                    'The proxy server (Cloud Run) may be running multiple instances, each with a different in-memory signing key. '
+                    'The fix is server-side: the proxy private key must be stored in Google Secret Manager so all instances share the same key.',
+                    style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+            _Step(number: '1', text: 'Open the Tesla app → tap your car → Security → Third-Party Apps → find VoltRide and tap Remove.'),
             const SizedBox(height: 8),
-            _Step(number: '2', text: 'In the Tesla app, tap your car on the map to pair the key.'),
+            _Step(number: '2', text: 'Tap the button below to re-add the virtual key with the proxy\'s current signing key.'),
             const SizedBox(height: 8),
-            _Step(number: '3', text: 'Come back here and retry the command.'),
+            _Step(number: '3', text: 'Return here and retry the command. If it still fails, the proxy server needs to be redeployed with a persistent key.'),
             const SizedBox(height: 20),
             FilledButton.icon(
               onPressed: () => launchUrl(Uri.parse(_keyUrl), mode: LaunchMode.externalApplication),
+              icon: const Icon(Icons.key_rounded, size: 18),
+              label: const Text('Re-add Virtual Key'),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(48),
+                backgroundColor: VoltColors.warning,
+                foregroundColor: Colors.black,
+              ),
+            ),
+            const SizedBox(height: 6),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Dismiss'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class VirtualKeySheet extends StatelessWidget {
+  const VirtualKeySheet({super.key});
+
+  static const _keyUrl = 'https://tesla.com/_ak/thedevelopersharma.com';
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(24, 20, 24, 24 + bottomPadding),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 40, height: 4,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.outlineVariant,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            const Center(child: Icon(Icons.key_off_rounded, size: 44, color: VoltColors.error)),
+            const SizedBox(height: 10),
+            Text(
+              'Vehicle Command Rejected',
+              style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Your vehicle rejected the command. This happens when the VoltRide virtual key is not registered on your vehicle, or the proxy\'s signing key doesn\'t match.',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: 20),
+
+            // Step 1 — check if key exists
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF1E1E1E) : const Color(0xFFF5F5F5),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('STEP 1 — Check if key is already added',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                          letterSpacing: 1.5, fontWeight: FontWeight.w800, color: VoltColors.outline)),
+                  const SizedBox(height: 8),
+                  Text(
+                    'In the Tesla app: tap your profile photo → Security → Keys.\n'
+                    'Look for "VoltRide" or "thedevelopersharma.com".',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+
+            // Step 2 — add key
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF1E1E1E) : const Color(0xFFF5F5F5),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('STEP 2 — Add (or re-add) the virtual key',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                          letterSpacing: 1.5, fontWeight: FontWeight.w800, color: VoltColors.outline)),
+                  const SizedBox(height: 8),
+                  Text(
+                    'If the key is NOT in the list, tap the button below. The Tesla website will guide you to open the Tesla app and tap your car to register the key.\n\n'
+                    'If the key IS already listed, remove it first (tap → Delete), then add it again using the button below.',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            FilledButton.icon(
+              onPressed: () => launchUrl(Uri.parse(_keyUrl), mode: LaunchMode.externalApplication),
               icon: const Icon(Icons.open_in_new_rounded, size: 18),
-              label: const Text('Register Virtual Key'),
+              label: const Text('Add Virtual Key'),
               style: FilledButton.styleFrom(
                 minimumSize: const Size.fromHeight(48),
                 backgroundColor: VoltColors.primary,
               ),
             ),
-            const SizedBox(height: 6),
+
+            const SizedBox(height: 16),
+
+            // Proxy key mismatch note
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: VoltColors.warning.withValues(alpha: 0.07),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: VoltColors.warning.withValues(alpha: 0.25)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(children: [
+                    const Icon(Icons.warning_amber_rounded, size: 15, color: VoltColors.warning),
+                    const SizedBox(width: 6),
+                    Text('Still failing after re-adding?',
+                        style: theme.textTheme.labelSmall?.copyWith(
+                            color: VoltColors.warning, fontWeight: FontWeight.w800, letterSpacing: 1)),
+                  ]),
+                  const SizedBox(height: 6),
+                  Text(
+                    'The proxy server\'s signing key doesn\'t match the public key at thedevelopersharma.com. '
+                    'This is a server-side issue — the proxy must be redeployed with the private key that '
+                    'corresponds to the domain\'s public key, stored persistently (e.g. Google Secret Manager).',
+                    style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
               child: const Text('Dismiss'),

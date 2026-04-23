@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:voltride/core/theme/volt_colors.dart';
 import 'package:voltride/features/dashboard/presentation/bloc/vehicle_bloc.dart';
-import 'package:voltride/features/dashboard/presentation/pages/home_page.dart' show VirtualKeySheet;
+import 'package:voltride/features/dashboard/presentation/pages/home_page.dart' show showCommandError;
 import 'dart:ui';
 
 class ControlsPage extends StatelessWidget {
@@ -42,26 +42,7 @@ class ControlsPage extends StatelessWidget {
       body: BlocConsumer<VehicleBloc, VehicleBlocState>(
         listenWhen: (prev, curr) =>
             curr.commandError != null && curr.commandError != prev.commandError,
-        listener: (context, state) {
-          final error = state.commandError!;
-          if (error == 'VIRTUAL_KEY_NOT_ADDED') {
-            showModalBottomSheet(
-              context: context,
-              isScrollControlled: true,
-              backgroundColor: Colors.transparent,
-              builder: (_) => const VirtualKeySheet(),
-            );
-          } else {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(error),
-                backgroundColor: VoltColors.error,
-                behavior: SnackBarBehavior.floating,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-            );
-          }
-        },
+        listener: (context, state) => showCommandError(context, state.commandError!),
         builder: (context, state) {
           final vehicle = state.selectedVehicle;
           if (vehicle == null) {

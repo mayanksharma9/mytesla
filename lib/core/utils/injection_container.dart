@@ -18,6 +18,7 @@ import 'package:voltride/features/dashboard/data/services/intelligence_engine.da
 import 'package:voltride/features/telemetry/data/services/trip_detection_service.dart';
 import 'package:voltride/features/charging/domain/charging_repository.dart';
 import 'package:voltride/features/charging/data/repositories/charging_repository_impl.dart';
+import 'package:voltride/features/charging/data/repositories/charging_history_cache.dart';
 import 'package:voltride/features/dashboard/data/services/telemetry_analytics_service.dart';
 import 'package:voltride/features/telemetry/data/repositories/trip_repository.dart';
 import 'package:voltride/features/telemetry/data/repositories/charge_session_repository.dart';
@@ -48,7 +49,7 @@ Future<void> init() async {
     sl<Box<VehicleCache>>(instanceName: 'vehicle_cache'), // vehicleCacheBox
     sl(), // tripDetectionService
   ));
-  sl.registerLazySingleton<ChargingRepository>(() => ChargingRepositoryImpl(sl(), sl()));
+  sl.registerLazySingleton<ChargingRepository>(() => ChargingRepositoryImpl(sl(), sl(), sl()));
   sl.registerLazySingleton<TelemetryRepository>(() => TelemetryRepositoryImpl(
     sl(), 
     sl(),
@@ -85,4 +86,5 @@ Future<void> init() async {
   sl.registerLazySingleton(() => Hive.box<VehicleCache>('vehicle_cache'), instanceName: 'vehicle_cache');
   sl.registerLazySingleton(() => Hive.box('user_prefs'), instanceName: 'user_prefs');
   sl.registerLazySingleton(() => Hive.box('vehicle_settings'), instanceName: 'vehicle_settings');
+  sl.registerLazySingleton(() => ChargingHistoryCache(Hive.box('charging_history_cache')));
 }

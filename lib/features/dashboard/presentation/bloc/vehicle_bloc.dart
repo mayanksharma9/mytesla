@@ -252,6 +252,113 @@ class SetPreconditioningMax extends VehicleEvent {
   List<Object?> get props => [vehicleId, on];
 }
 
+class ChargeMaxRange extends VehicleEvent {
+  final String vehicleId;
+  const ChargeMaxRange(this.vehicleId);
+  @override List<Object?> get props => [vehicleId];
+}
+
+class ChargeStandard extends VehicleEvent {
+  final String vehicleId;
+  const ChargeStandard(this.vehicleId);
+  @override List<Object?> get props => [vehicleId];
+}
+
+class SetSeatCooler extends VehicleEvent {
+  final String vehicleId;
+  final int seatPosition; // 1=front left, 2=front right
+  final int level;        // 0=off, 1=low, 2=med, 3=high
+  const SetSeatCooler(this.vehicleId, this.seatPosition, this.level);
+  @override List<Object?> get props => [vehicleId, seatPosition, level];
+}
+
+class SetCopTemp extends VehicleEvent {
+  final String vehicleId;
+  final int copTemp; // 0=Low/90°F, 1=Med/95°F, 2=High/100°F
+  const SetCopTemp(this.vehicleId, this.copTemp);
+  @override List<Object?> get props => [vehicleId, copTemp];
+}
+
+class SetSteeringWheelHeatLevel extends VehicleEvent {
+  final String vehicleId;
+  final int level; // 0=off, 1=low, 3=high
+  const SetSteeringWheelHeatLevel(this.vehicleId, this.level);
+  @override List<Object?> get props => [vehicleId, level];
+}
+
+class AdjustVolume extends VehicleEvent {
+  final String vehicleId;
+  final double volume; // 0.0–11.0
+  const AdjustVolume(this.vehicleId, this.volume);
+  @override List<Object?> get props => [vehicleId, volume];
+}
+
+class SunRoofControl extends VehicleEvent {
+  final String vehicleId;
+  final String state; // "vent", "close", "stop"
+  const SunRoofControl(this.vehicleId, this.state);
+  @override List<Object?> get props => [vehicleId, state];
+}
+
+class ScheduleSoftwareUpdate extends VehicleEvent {
+  final String vehicleId;
+  final int offsetSec;
+  const ScheduleSoftwareUpdate(this.vehicleId, this.offsetSec);
+  @override List<Object?> get props => [vehicleId, offsetSec];
+}
+
+class CancelSoftwareUpdate extends VehicleEvent {
+  final String vehicleId;
+  const CancelSoftwareUpdate(this.vehicleId);
+  @override List<Object?> get props => [vehicleId];
+}
+
+class NavigateToGps extends VehicleEvent {
+  final String vehicleId;
+  final double lat;
+  final double lon;
+  const NavigateToGps(this.vehicleId, this.lat, this.lon);
+  @override List<Object?> get props => [vehicleId, lat, lon];
+}
+
+class NavigateToSupercharger extends VehicleEvent {
+  final String vehicleId;
+  final String superchargerId;
+  const NavigateToSupercharger(this.vehicleId, this.superchargerId);
+  @override List<Object?> get props => [vehicleId, superchargerId];
+}
+
+class FetchRecentAlerts extends VehicleEvent {
+  final String vin;
+  const FetchRecentAlerts(this.vin);
+  @override List<Object?> get props => [vin];
+}
+
+class FetchServiceData extends VehicleEvent {
+  final String vin;
+  const FetchServiceData(this.vin);
+  @override List<Object?> get props => [vin];
+}
+
+class FetchDrivers extends VehicleEvent {
+  final String vin;
+  const FetchDrivers(this.vin);
+  @override List<Object?> get props => [vin];
+}
+
+class CreateShareInvite extends VehicleEvent {
+  final String vin;
+  const CreateShareInvite(this.vin);
+  @override List<Object?> get props => [vin];
+}
+
+class RevokeShareInvite extends VehicleEvent {
+  final String vin;
+  final String inviteId;
+  const RevokeShareInvite(this.vin, this.inviteId);
+  @override List<Object?> get props => [vin, inviteId];
+}
+
 class FetchHistory extends VehicleEvent {
   final String vin;
   const FetchHistory(this.vin);
@@ -331,6 +438,11 @@ class VehicleBlocState extends Equatable {
   final Map<String, dynamic>? fleetTelemetryConfig;
   final Map<String, dynamic>? fleetTelemetryErrors;
   final Map<String, dynamic>? fleetStatus;
+  final List<Map<String, dynamic>> recentAlerts;
+  final Map<String, dynamic>? serviceData;
+  final List<Map<String, dynamic>> drivers;
+  final List<Map<String, dynamic>> shareInvites;
+  final String? createdShareInviteUrl;
 
   const VehicleBlocState({
     this.status = VehicleStatus.initial,
@@ -351,6 +463,11 @@ class VehicleBlocState extends Equatable {
     this.fleetTelemetryConfig,
     this.fleetTelemetryErrors,
     this.fleetStatus,
+    this.recentAlerts = const [],
+    this.serviceData,
+    this.drivers = const [],
+    this.shareInvites = const [],
+    this.createdShareInviteUrl,
   });
 
   @override
@@ -372,6 +489,11 @@ class VehicleBlocState extends Equatable {
     fleetTelemetryConfig,
     fleetTelemetryErrors,
     fleetStatus,
+    recentAlerts,
+    serviceData,
+    drivers,
+    shareInvites,
+    createdShareInviteUrl,
   ];
 
   VehicleBlocState copyWith({
@@ -395,6 +517,13 @@ class VehicleBlocState extends Equatable {
     bool clearFleetTelemetryConfig = false,
     Map<String, dynamic>? fleetTelemetryErrors,
     Map<String, dynamic>? fleetStatus,
+    List<Map<String, dynamic>>? recentAlerts,
+    Map<String, dynamic>? serviceData,
+    bool clearServiceData = false,
+    List<Map<String, dynamic>>? drivers,
+    List<Map<String, dynamic>>? shareInvites,
+    String? createdShareInviteUrl,
+    bool clearCreatedShareInviteUrl = false,
   }) {
     return VehicleBlocState(
       status: status ?? this.status,
@@ -415,6 +544,11 @@ class VehicleBlocState extends Equatable {
       fleetTelemetryConfig: clearFleetTelemetryConfig ? null : (fleetTelemetryConfig ?? this.fleetTelemetryConfig),
       fleetTelemetryErrors: fleetTelemetryErrors ?? this.fleetTelemetryErrors,
       fleetStatus: fleetStatus ?? this.fleetStatus,
+      recentAlerts: recentAlerts ?? this.recentAlerts,
+      serviceData: clearServiceData ? null : (serviceData ?? this.serviceData),
+      drivers: drivers ?? this.drivers,
+      shareInvites: shareInvites ?? this.shareInvites,
+      createdShareInviteUrl: clearCreatedShareInviteUrl ? null : (createdShareInviteUrl ?? this.createdShareInviteUrl),
     );
   }
 
@@ -481,29 +615,57 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleBlocState> {
     on<DeleteFleetTelemetryConfig>(_onDeleteFleetTelemetryConfig);
     on<FetchFleetTelemetryErrors>(_onFetchFleetTelemetryErrors);
     on<FetchFleetStatus>(_onFetchFleetStatus);
+    on<ChargeMaxRange>(_onChargeMaxRange);
+    on<ChargeStandard>(_onChargeStandard);
+    on<SetSeatCooler>(_onSetSeatCooler);
+    on<SetCopTemp>(_onSetCopTemp);
+    on<SetSteeringWheelHeatLevel>(_onSetSteeringWheelHeatLevel);
+    on<AdjustVolume>(_onAdjustVolume);
+    on<SunRoofControl>(_onSunRoofControl);
+    on<ScheduleSoftwareUpdate>(_onScheduleSoftwareUpdate);
+    on<CancelSoftwareUpdate>(_onCancelSoftwareUpdate);
+    on<NavigateToGps>(_onNavigateToGps);
+    on<NavigateToSupercharger>(_onNavigateToSupercharger);
+    on<FetchRecentAlerts>(_onFetchRecentAlerts);
+    on<FetchServiceData>(_onFetchServiceData);
+    on<FetchDrivers>(_onFetchDrivers);
+    on<CreateShareInvite>(_onCreateShareInvite);
+    on<RevokeShareInvite>(_onRevokeShareInvite);
   }
 
   /// Converts raw exception messages into user-friendly strings.
   /// Surfaces the virtual key setup instruction prominently.
   String _userFriendlyError(Object e) {
     final msg = e.toString();
-    if (msg.contains('whitelist') || msg.contains('virtual key') || msg.contains('Virtual key')) {
+    // Explicit whitelist/key-missing errors → show setup sheet
+    if (msg.contains('whitelist') || msg.contains('key not on') ||
+        msg.contains('Virtual key required')) {
       return 'VIRTUAL_KEY_NOT_ADDED';
     }
-    if (msg.contains('Unauthorized')) {
-      return 'Command rejected by vehicle. If this keeps happening, add the virtual key: open https://tesla.com/_ak/thedevelopersharma.com in the Tesla app and tap your car.';
+    // Vehicle rejected with Unauthorized — either no virtual key on vehicle, or
+    // proxy signing key doesn't match the registered virtual key.
+    // Both cases surface as VIRTUAL_KEY_NOT_ADDED so the user sees the key sheet.
+    if (msg.contains('PROXY_AUTH_FAILED')) {
+      return 'VIRTUAL_KEY_NOT_ADDED';
+    }
+    // Direct Fleet API 403 TVCP — key not added
+    if (msg.contains('Vehicle Command Protocol') || msg.contains('tvcp')) {
+      return 'VIRTUAL_KEY_NOT_ADDED';
     }
     if (msg.contains('Vehicle failed to wake') || msg.contains('asleep')) {
       return 'Vehicle is asleep. Try again in a moment.';
     }
-    if (msg.contains('403') || msg.contains('Vehicle Command Protocol')) {
-      return 'VIRTUAL_KEY_NOT_ADDED';
+    if (msg.contains('session could not be established')) {
+      return 'Could not establish a secure session with the vehicle. Ensure the proxy is running and the vehicle is online, then try again.';
     }
     return msg.replaceAll('Exception: ', '');
   }
 
   /// Cast to concrete type for cache access
-  VehicleRepositoryImpl? get _repoImpl => _repository is VehicleRepositoryImpl ? _repository as VehicleRepositoryImpl : null;
+  VehicleRepositoryImpl? get _repoImpl {
+    final r = _repository;
+    return r is VehicleRepositoryImpl ? r : null;
+  }
 
   void _onStartPolling(StartPolling event, Emitter<VehicleBlocState> emit) {
     if (state.selectedVehicle == null) return;
@@ -930,7 +1092,7 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleBlocState> {
 
     try {
       await _repository.setSentryMode(event.vehicleId, event.on);
-      add(FetchVehicles());
+      add(RefreshSelectedVehicle());
     } catch (e) {
       emit(state.copyWith(
         commandError: 'Sentry mode command failed: ${e.toString()}',
@@ -957,7 +1119,7 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleBlocState> {
 
     try {
       await _repository.setValetMode(event.vehicleId, event.on, password: event.password);
-      add(FetchVehicles());
+      add(RefreshSelectedVehicle());
     } catch (e) {
       emit(state.copyWith(
         commandError: 'Valet mode command failed: ${e.toString()}',
@@ -983,8 +1145,8 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleBlocState> {
   }
 
   /// Wake the vehicle when app comes to foreground, then fetch fresh data.
-  /// Sends the wake command immediately and dispatches FetchVehicles without
-  /// blocking — the repository handles 408 (asleep) with its own retry logic.
+  /// Skips the wake command if the vehicle was synced within the last 5 minutes
+  /// (it is almost certainly still online), saving an unnecessary wake API call.
   Future<void> _onWakeOnForeground(WakeOnForeground event, Emitter<VehicleBlocState> emit) async {
     final currentSelected = state.selectedVehicle;
     if (currentSelected == null) {
@@ -993,18 +1155,27 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleBlocState> {
       return;
     }
 
-    debugPrint('VehicleBloc: App resumed — waking vehicle ${currentSelected.id}');
     emit(state.copyWith(status: VehicleStatus.refreshing));
 
-    // 1. Fire wake command (non-blocking — vehicle may already be online)
-    try {
-      await _repository.wakeUp(currentSelected.id);
-    } catch (e) {
-      debugPrint('VehicleBloc: Wake command failed (vehicle may already be online): $e');
+    // Only send a wake command if we haven't heard from the vehicle recently.
+    // If the last sync was within 5 minutes the vehicle is likely still online.
+    final lastSync = state.lastSyncTime;
+    final recentlyOnline = lastSync != null &&
+        DateTime.now().difference(lastSync) < const Duration(minutes: 5);
+
+    if (!recentlyOnline) {
+      debugPrint('VehicleBloc: App resumed — waking vehicle ${currentSelected.id}');
+      try {
+        await _repository.wakeUp(currentSelected.id);
+      } catch (e) {
+        debugPrint('VehicleBloc: Wake command failed (vehicle may already be online): $e');
+      }
+    } else {
+      debugPrint('VehicleBloc: App resumed — vehicle synced ${DateTime.now().difference(lastSync).inSeconds}s ago, skipping wake');
     }
 
-    // 2. Kick off a fresh data fetch immediately.
-    //    Repository handles 408 (vehicle asleep) internally via its own retry.
+    // Kick off a fresh data fetch.
+    // Repository handles 408 (vehicle asleep) internally via its own retry.
     add(FetchVehicles());
   }
 
@@ -1021,7 +1192,7 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleBlocState> {
 
     try {
       await _repository.setClimateKeeperMode(event.vehicleId, event.mode);
-      add(FetchVehicles());
+      add(RefreshSelectedVehicle());
     } catch (e) {
       emit(state.copyWith(
         commandError: 'Climate keeper mode failed: ${e.toString()}',
@@ -1045,7 +1216,7 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleBlocState> {
 
     try {
       await _repository.openChargePort(event.vehicleId);
-      add(FetchVehicles());
+      add(RefreshSelectedVehicle());
     } catch (e) {
       emit(state.copyWith(
         commandError: 'Charge port open failed: ${e.toString()}',
@@ -1069,7 +1240,7 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleBlocState> {
 
     try {
       await _repository.closeChargePort(event.vehicleId);
-      add(FetchVehicles());
+      add(RefreshSelectedVehicle());
     } catch (e) {
       emit(state.copyWith(
         commandError: 'Charge port close failed: ${e.toString()}',
@@ -1083,7 +1254,7 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleBlocState> {
   Future<void> _onSetScheduledCharging(SetScheduledCharging event, Emitter<VehicleBlocState> emit) async {
     try {
       await _repository.setScheduledCharging(event.vehicleId, event.enable, startTime: event.startTime);
-      add(FetchVehicles());
+      add(RefreshSelectedVehicle());
     } catch (e) {
       emit(state.copyWith(commandError: 'Scheduled charging failed: ${e.toString()}'));
     }
@@ -1258,6 +1429,171 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleBlocState> {
     try {
       await _repository.setPreconditioningMax(event.vehicleId, event.on);
       add(RefreshSelectedVehicle());
+    } catch (e) {
+      emit(state.copyWith(commandError: _userFriendlyError(e)));
+    }
+  }
+
+  Future<void> _onChargeMaxRange(ChargeMaxRange event, Emitter<VehicleBlocState> emit) async {
+    final cmdId = '${event.vehicleId}_charge_mode';
+    emit(state.copyWith(loadingCommands: {...state.loadingCommands, cmdId}));
+    try {
+      await _repository.chargeMaxRange(event.vehicleId);
+      add(RefreshSelectedVehicle());
+    } catch (e) {
+      emit(state.copyWith(commandError: _userFriendlyError(e)));
+    } finally {
+      emit(state.copyWith(loadingCommands: Set.from(state.loadingCommands)..remove(cmdId)));
+    }
+  }
+
+  Future<void> _onChargeStandard(ChargeStandard event, Emitter<VehicleBlocState> emit) async {
+    final cmdId = '${event.vehicleId}_charge_mode';
+    emit(state.copyWith(loadingCommands: {...state.loadingCommands, cmdId}));
+    try {
+      await _repository.chargeStandard(event.vehicleId);
+      add(RefreshSelectedVehicle());
+    } catch (e) {
+      emit(state.copyWith(commandError: _userFriendlyError(e)));
+    } finally {
+      emit(state.copyWith(loadingCommands: Set.from(state.loadingCommands)..remove(cmdId)));
+    }
+  }
+
+  Future<void> _onSetSeatCooler(SetSeatCooler event, Emitter<VehicleBlocState> emit) async {
+    try {
+      await _repository.setSeatCooler(event.vehicleId, event.seatPosition, event.level);
+      add(RefreshSelectedVehicle());
+    } catch (e) {
+      emit(state.copyWith(commandError: _userFriendlyError(e)));
+    }
+  }
+
+  Future<void> _onSetCopTemp(SetCopTemp event, Emitter<VehicleBlocState> emit) async {
+    try {
+      await _repository.setCopTemp(event.vehicleId, event.copTemp);
+      add(RefreshSelectedVehicle());
+    } catch (e) {
+      emit(state.copyWith(commandError: _userFriendlyError(e)));
+    }
+  }
+
+  Future<void> _onSetSteeringWheelHeatLevel(SetSteeringWheelHeatLevel event, Emitter<VehicleBlocState> emit) async {
+    try {
+      await _repository.setSteeringWheelHeatLevel(event.vehicleId, event.level);
+      add(RefreshSelectedVehicle());
+    } catch (e) {
+      emit(state.copyWith(commandError: _userFriendlyError(e)));
+    }
+  }
+
+  Future<void> _onAdjustVolume(AdjustVolume event, Emitter<VehicleBlocState> emit) async {
+    try {
+      await _repository.adjustVolume(event.vehicleId, event.volume);
+    } catch (e) {
+      emit(state.copyWith(commandError: _userFriendlyError(e)));
+    }
+  }
+
+  Future<void> _onSunRoofControl(SunRoofControl event, Emitter<VehicleBlocState> emit) async {
+    try {
+      await _repository.sunRoofControl(event.vehicleId, event.state);
+    } catch (e) {
+      emit(state.copyWith(commandError: _userFriendlyError(e)));
+    }
+  }
+
+  Future<void> _onScheduleSoftwareUpdate(ScheduleSoftwareUpdate event, Emitter<VehicleBlocState> emit) async {
+    final cmdId = '${event.vehicleId}_sw_update';
+    emit(state.copyWith(loadingCommands: {...state.loadingCommands, cmdId}));
+    try {
+      await _repository.scheduleSoftwareUpdate(event.vehicleId, event.offsetSec);
+      add(RefreshSelectedVehicle());
+    } catch (e) {
+      emit(state.copyWith(commandError: _userFriendlyError(e)));
+    } finally {
+      emit(state.copyWith(loadingCommands: Set.from(state.loadingCommands)..remove(cmdId)));
+    }
+  }
+
+  Future<void> _onCancelSoftwareUpdate(CancelSoftwareUpdate event, Emitter<VehicleBlocState> emit) async {
+    final cmdId = '${event.vehicleId}_sw_update';
+    emit(state.copyWith(loadingCommands: {...state.loadingCommands, cmdId}));
+    try {
+      await _repository.cancelSoftwareUpdate(event.vehicleId);
+      add(RefreshSelectedVehicle());
+    } catch (e) {
+      emit(state.copyWith(commandError: _userFriendlyError(e)));
+    } finally {
+      emit(state.copyWith(loadingCommands: Set.from(state.loadingCommands)..remove(cmdId)));
+    }
+  }
+
+  Future<void> _onNavigateToGps(NavigateToGps event, Emitter<VehicleBlocState> emit) async {
+    try {
+      await _repository.navigationGpsRequest(event.vehicleId, event.lat, event.lon);
+    } catch (e) {
+      emit(state.copyWith(commandError: _userFriendlyError(e)));
+    }
+  }
+
+  Future<void> _onNavigateToSupercharger(NavigateToSupercharger event, Emitter<VehicleBlocState> emit) async {
+    try {
+      await _repository.navigationScRequest(event.vehicleId, event.superchargerId);
+    } catch (e) {
+      emit(state.copyWith(commandError: _userFriendlyError(e)));
+    }
+  }
+
+  Future<void> _onFetchRecentAlerts(FetchRecentAlerts event, Emitter<VehicleBlocState> emit) async {
+    try {
+      final alerts = await _repository.getRecentAlerts(event.vin);
+      emit(state.copyWith(recentAlerts: alerts));
+    } catch (e) {
+      debugPrint('VehicleBloc: FetchRecentAlerts failed: $e');
+    }
+  }
+
+  Future<void> _onFetchServiceData(FetchServiceData event, Emitter<VehicleBlocState> emit) async {
+    try {
+      final data = await _repository.getServiceData(event.vin);
+      emit(state.copyWith(serviceData: data));
+    } catch (e) {
+      debugPrint('VehicleBloc: FetchServiceData failed: $e');
+    }
+  }
+
+  Future<void> _onFetchDrivers(FetchDrivers event, Emitter<VehicleBlocState> emit) async {
+    try {
+      final driverList = await _repository.getDrivers(event.vin);
+      emit(state.copyWith(drivers: driverList));
+    } catch (e) {
+      debugPrint('VehicleBloc: FetchDrivers failed: $e');
+    }
+  }
+
+  Future<void> _onCreateShareInvite(CreateShareInvite event, Emitter<VehicleBlocState> emit) async {
+    final cmdId = '${event.vin}_share_invite';
+    emit(state.copyWith(loadingCommands: {...state.loadingCommands, cmdId}, clearCreatedShareInviteUrl: true));
+    try {
+      final result = await _repository.createShareInvite(event.vin);
+      final url = result['url'] as String?;
+      emit(state.copyWith(createdShareInviteUrl: url));
+      // Refresh the invite list
+      add(FetchDrivers(event.vin));
+    } catch (e) {
+      emit(state.copyWith(commandError: _userFriendlyError(e)));
+    } finally {
+      emit(state.copyWith(loadingCommands: Set.from(state.loadingCommands)..remove(cmdId)));
+    }
+  }
+
+  Future<void> _onRevokeShareInvite(RevokeShareInvite event, Emitter<VehicleBlocState> emit) async {
+    try {
+      await _repository.revokeShareInvite(event.vin, event.inviteId);
+      // Optimistically remove from local list
+      final updated = state.shareInvites.where((i) => i['id'] != event.inviteId).toList();
+      emit(state.copyWith(shareInvites: updated));
     } catch (e) {
       emit(state.copyWith(commandError: _userFriendlyError(e)));
     }

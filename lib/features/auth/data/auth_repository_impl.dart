@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import '../domain/auth_repository.dart';
 import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -33,20 +34,16 @@ class AuthRepositoryImpl implements AuthRepository {
           'redirect_uri': callbackUrl,
           'response_type': 'code',
           'scope': TeslaConfig.scopeString,
-          'audience': TeslaConfig.audience,
           'state': 'vtr-${DateTime.now().millisecondsSinceEpoch}',
+          // Inform users a virtual key pairing step follows login.
+          'show_keypair_step': 'true',
         },
       );
-      final url = authUri.toString();
-
-      print('AuthRepository: Launching Tesla Auth URL: $url');
 
       final result = await FlutterWebAuth2.authenticate(
-        url: url,
+        url: authUri.toString(),
         callbackUrlScheme: callbackScheme,
       );
-
-      print('AuthRepository: Auth Result: $result');
 
       final uri = Uri.parse(result);
       final code = uri.queryParameters['code'];
@@ -54,9 +51,9 @@ class AuthRepositoryImpl implements AuthRepository {
       final errorDesc = uri.queryParameters['error_description'];
 
       if (code != null) {
-        print('AuthRepository: Exchanging code for tokens...');
-        
-        // Exchange code for tokens using Tesla token URL
+        // Exchange code for tokens.
+        // Tesla docs: code exchange requires 'audience' (Fleet API base URL).
+        // Must POST to fleet-auth domain, not auth.tesla.com.
         final response = await _tokenDio.post(
           TeslaConfig.tokenUrl,
           data: {
@@ -65,53 +62,49 @@ class AuthRepositoryImpl implements AuthRepository {
             'client_secret': TeslaConfig.clientSecret,
             'code': code,
             'redirect_uri': callbackUrl,
+            'audience': TeslaConfig.audience,
           },
-          options: Options(
-            contentType: Headers.formUrlEncodedContentType,
-          ),
+          options: Options(contentType: Headers.formUrlEncodedContentType),
         );
 
         if (response.statusCode == 200) {
-          print('AuthRepository: Login successful, saving tokens.');
           final expiresIn = response.data['expires_in'] as int;
-          final expiresAt = DateTime.now().add(Duration(seconds: expiresIn)).millisecondsSinceEpoch;
+          final expiresAt = DateTime.now()
+              .add(Duration(seconds: expiresIn))
+              .millisecondsSinceEpoch;
 
           await _storage.write(key: 'access_token', value: response.data['access_token']);
           await _storage.write(key: 'refresh_token', value: response.data['refresh_token']);
           await _storage.write(key: _expiresAtKey, value: expiresAt.toString());
 
-          // --- AUTO REGION DISCOVERY ---
+          // Auto region discovery — always use NA endpoint for this call.
           try {
-            print('AuthRepository: Discovering user region...');
             final regionResponse = await _dio.get(
               'https://fleet-api.prd.na.vn.cloud.tesla.com/api/1/users/region',
-              options: Options(headers: {'Authorization': 'Bearer ${response.data['access_token']}'}),
+              options: Options(
+                  headers: {'Authorization': 'Bearer ${response.data['access_token']}'}),
             );
             final regionData = regionResponse.data['response'];
             if (regionData != null) {
               final fleetUrl = regionData['fleet_api_base_url'] as String;
-              print('AuthRepository: Region discovered: $fleetUrl');
+              debugPrint('AuthRepository: Region discovered: $fleetUrl');
               await _storage.write(key: _regionKey, value: fleetUrl);
             }
           } catch (e) {
-            print('AuthRepository: Region discovery failed, using default: $e');
+            debugPrint('AuthRepository: Region discovery failed, using default: $e');
           }
           return true;
         } else {
-          print('AuthRepository: Token exchange failed with status: ${response.statusCode}');
           throw Exception('Token exchange failed: ${response.statusCode}');
         }
       } else if (error != null) {
-        final message = errorDesc ?? error;
-        print('AuthRepository: Auth error: $message');
-        throw Exception(message.replaceAll('%20', ' '));
+        throw Exception((errorDesc ?? error).replaceAll('%20', ' '));
       } else {
-        print('AuthRepository: No code or error found in result.');
         return false;
       }
     } catch (e) {
-      print('AuthRepository: Login error: $e');
-      rethrow; // Rethrow to let Bloc handle the specific error message
+      debugPrint('AuthRepository: Login error: $e');
+      rethrow;
     }
   }
 
@@ -124,37 +117,46 @@ class AuthRepositoryImpl implements AuthRepository {
   @override
   Future<bool> refreshToken() async {
     final refreshToken = await _storage.read(key: 'refresh_token');
-    
     if (refreshToken == null) return false;
 
     try {
+      // Tesla docs: refresh only requires grant_type, client_id, refresh_token.
+      // Must POST to fleet-auth domain.
       final response = await _tokenDio.post(
         TeslaConfig.tokenUrl,
         data: {
           'grant_type': 'refresh_token',
           'client_id': TeslaConfig.clientId,
-          'client_secret': TeslaConfig.clientSecret,
           'refresh_token': refreshToken,
         },
-        options: Options(
-          contentType: Headers.formUrlEncodedContentType,
-        ),
+        options: Options(contentType: Headers.formUrlEncodedContentType),
       );
 
       if (response.statusCode == 200) {
         final expiresIn = response.data['expires_in'] as int;
-        final expiresAt = DateTime.now().add(Duration(seconds: expiresIn)).millisecondsSinceEpoch;
+        final expiresAt = DateTime.now()
+            .add(Duration(seconds: expiresIn))
+            .millisecondsSinceEpoch;
 
         await _storage.write(key: 'access_token', value: response.data['access_token']);
-        await _storage.write(key: 'refresh_token', value: response.data['refresh_token']);
+        // Save new refresh token — Tesla refresh tokens are single-use.
+        if (response.data['refresh_token'] != null) {
+          await _storage.write(key: 'refresh_token', value: response.data['refresh_token']);
+        }
         await _storage.write(key: _expiresAtKey, value: expiresAt.toString());
         return true;
       }
     } catch (e) {
-      print('AuthRepository: Refresh token failed: $e');
-      if (e is DioException && (e.response?.statusCode == 403 || e.response?.statusCode == 401)) {
-        print('AuthRepository: Invalid refresh token, clearing session');
-        await logout();
+      debugPrint('AuthRepository: Refresh token failed: $e');
+      if (e is DioException) {
+        final status = e.response?.statusCode;
+        final body = e.response?.data;
+        final errorCode = body is Map ? body['error'] as String? : null;
+        // login_required = refresh token expired or password reset — must re-auth.
+        if (status == 401 || errorCode == 'login_required') {
+          debugPrint('AuthRepository: Refresh token invalid — clearing session');
+          await logout();
+        }
       }
     }
     return false;

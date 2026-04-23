@@ -121,6 +121,17 @@ class _MorePageState extends State<MorePage> {
 
                 const SizedBox(height: 24),
 
+                _Label('VEHICLE CONTROLS'),
+                const SizedBox(height: 8),
+                _SettingsCard(
+                  items: [
+                    _SettingsItem(Icons.settings_remote_outlined, 'Vehicle Commands', 'Locks, trunk, sentry & more', onTab: () => context.push('/more/controls')),
+                    _SettingsItem(Icons.trending_up, 'Efficiency', 'Range & energy efficiency', onTab: () => context.push('/more/efficiency')),
+                  ],
+                ),
+
+                const SizedBox(height: 20),
+
                 _Label('ANALYTICS'),
                 const SizedBox(height: 8),
                 _SettingsCard(
