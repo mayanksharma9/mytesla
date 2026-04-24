@@ -187,54 +187,57 @@ class _ClimatePageState extends State<ClimatePage> {
                       ),
                       const SizedBox(height: 32),
 
-                      // Actions
+                      // Actions — Expanded so they share space on narrow screens
                       Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          ElevatedButton.icon(
-                            onPressed: isClimateLoading
-                                ? null
-                                : () => context.read<VehicleBloc>().add(
-                                      ToggleClimate(vehicle.id, !vehicle.isClimateOn),
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: isClimateLoading
+                                  ? null
+                                  : () => context.read<VehicleBloc>().add(
+                                        ToggleClimate(vehicle.id, !vehicle.isClimateOn),
+                                      ),
+                              icon: isClimateLoading
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : Icon(
+                                      Icons.ac_unit,
+                                      color: vehicle.isClimateOn ? Colors.white : VoltColors.primary,
+                                      size: 18,
                                     ),
-                            icon: isClimateLoading
-                                ? const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Colors.white,
-                                    ),
-                                  )
-                                : Icon(
-                                    Icons.ac_unit,
-                                    color: vehicle.isClimateOn ? Colors.white : VoltColors.primary,
-                                    size: 18,
-                                  ),
-                            label: Text(vehicle.isClimateOn ? 'ON' : 'TURN ON'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: vehicle.isClimateOn
-                                  ? VoltColors.primary
-                                  : (isDark ? VoltColors.surfaceElevatedDark : VoltColors.surfaceContainerHighest),
-                              foregroundColor: vehicle.isClimateOn
-                                  ? Colors.white
-                                  : (isDark ? Colors.white : Colors.black87),
-                              elevation: vehicle.isClimateOn ? 8 : 0,
-                              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                              label: Text(vehicle.isClimateOn ? 'ON' : 'TURN ON'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: vehicle.isClimateOn
+                                    ? VoltColors.primary
+                                    : (isDark ? VoltColors.surfaceElevatedDark : VoltColors.surfaceContainerHighest),
+                                foregroundColor: vehicle.isClimateOn
+                                    ? Colors.white
+                                    : (isDark ? Colors.white : Colors.black87),
+                                elevation: vehicle.isClimateOn ? 8 : 0,
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                              ),
                             ),
                           ),
-                          const SizedBox(width: 16),
-                          ElevatedButton(
-                            onPressed: () {},
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: isDark ? VoltColors.surfaceElevatedDark : VoltColors.surfaceContainerHighest,
-                              foregroundColor: isDark ? Colors.white : Colors.black87,
-                              elevation: 0,
-                              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: () {},
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: isDark ? VoltColors.surfaceElevatedDark : VoltColors.surfaceContainerHighest,
+                                foregroundColor: isDark ? Colors.white : Colors.black87,
+                                elevation: 0,
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                              ),
+                              child: const Text('SCHEDULE', style: TextStyle(fontWeight: FontWeight.bold)),
                             ),
-                            child: const Text('SCHEDULE', style: TextStyle(fontWeight: FontWeight.bold)),
                           ),
                         ],
                       ),

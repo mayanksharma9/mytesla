@@ -58,42 +58,9 @@ void main(List<String> args) async {
     final fleetBaseUrl = request.headers['x-fleet-api-base-url'];
 
     try {
-      // Step 1: Ensure Session is Ready
       final domain = TVCPSigner.getDomainForCommand(command);
-      if (!signer.isSessionReady(domain)) {
-        print('Session not ready for $vin, initiating handshake...');
-        final requestMsg = await signer.createSessionInfoRequest(domain);
-        final handshakePayload = base64Encode(requestMsg.writeToBuffer());
 
-        final handshakeRes = await teslaApi.sendSignedCommand(
-          vin, handshakePayload, token, fleetBaseUrl: fleetBaseUrl);
-        print('Handshake API Response: $handshakeRes');
-        
-        final responseObj = _safeGet(handshakeRes, 'response');
-        String? resB64;
-        
-        if (responseObj is String) {
-          // Direct string response (Common for some vehicle versions)
-          resB64 = responseObj;
-        } else if (responseObj != null) {
-          // Nested response (Standard Fleet API)
-          final nested = _safeGet(responseObj, 'routable_message');
-          if (nested is String) resB64 = nested;
-        }
-
-        if (resB64 != null) {
-          final routableResponse = RoutableMessage.fromBuffer(base64Decode(resB64));
-          await signer.processSessionInfoResponse(domain, routableResponse);
-          print('Handshake successful for $vin');
-        } else {
-           return Response.internalServerError(body: jsonEncode({
-             'error': 'Invalid handshake routable message: $resB64', 
-             'raw': handshakeRes
-           }));
-        }
-      }
-
-      // Step 2: Extract Body Data if present
+      // Parse request body before the nested closure captures it.
       final body = await request.readAsString();
       Map<String, dynamic>? payload;
       if (body.isNotEmpty) {
@@ -102,20 +69,58 @@ void main(List<String> args) async {
         } catch (_) {}
       }
 
-      // Step 3: Sign and Send Command
-      final payloadB64 = await signer.signCommand(command, data: payload);
-      print('Sending command $command to $vin...');
-      final commandRes = await teslaApi.sendSignedCommand(
-        vin, payloadB64, token, fleetBaseUrl: fleetBaseUrl);
+      // Perform handshake (if needed) then sign and send the command.
+      // On Unauthorized response the caller retries with isRetry=true which
+      // forces a fresh handshake before re-signing.
+      Future<Map<String, dynamic>> doHandshakeAndSend({bool isRetry = false}) async {
+        if (!signer.isSessionReady(domain) || isRetry) {
+          if (isRetry) {
+            print('Session rejected by vehicle — re-handshaking for $vin...');
+            signers[vin] = TVCPSigner(vin);
+          }
+          final freshSigner = signers[vin]!;
+          final reqMsg = await freshSigner.createSessionInfoRequest(domain);
+          final hsPayload = base64Encode(reqMsg.writeToBuffer());
+          final hsRes = await teslaApi.sendSignedCommand(vin, hsPayload, token, fleetBaseUrl: fleetBaseUrl);
+          final responseObj2 = _safeGet(hsRes, 'response');
+          String? resB64;
+          if (responseObj2 is String) {
+            resB64 = responseObj2;
+          } else if (responseObj2 != null) {
+            final nested = _safeGet(responseObj2, 'routable_message');
+            if (nested is String) resB64 = nested;
+          }
+          if (resB64 == null) throw Exception('Invalid handshake response: $hsRes');
+          await freshSigner.processSessionInfoResponse(
+              domain, RoutableMessage.fromBuffer(base64Decode(resB64)));
+          print('Re-handshake successful for $vin');
+        }
+
+        final activeSigner = signers[vin]!;
+        final signedB64 = await activeSigner.signCommand(command, data: payload);
+        print('Sending command $command to $vin${isRetry ? " (retry)" : ""}...');
+        return teslaApi.sendSignedCommand(vin, signedB64, token, fleetBaseUrl: fleetBaseUrl);
+      }
+
+      var commandRes = await doHandshakeAndSend();
       print('Command API Response: $commandRes');
 
       // Tesla returns HTTP 200 with {response: null, error: "Unauthorized"} when
-      // the HMAC signature is rejected (wrong key or stale counter). Reset the
-      // session so the next request triggers a fresh handshake with the correct key.
+      // the HMAC session counter is stale. Immediately re-handshake and retry once.
       final resError = _safeGet(commandRes, 'error');
-      if (resError != null && resError.toString().isNotEmpty && _safeGet(commandRes, 'response') == null) {
-        print('Vehicle rejected command ($resError) — resetting session for $vin to force re-handshake.');
-        signers.remove(vin);
+      if (resError != null &&
+          resError.toString().isNotEmpty &&
+          _safeGet(commandRes, 'response') == null) {
+        final errStr = resError.toString().toLowerCase();
+        if (errStr.contains('unauthorized') || errStr.contains('session')) {
+          print('Vehicle rejected command ($resError) — retrying with fresh session for $vin...');
+          commandRes = await doHandshakeAndSend(isRetry: true);
+          print('Retry response: $commandRes');
+        } else {
+          // Non-session error (e.g. rate limit, invalid param) — reset session
+          // so the next request re-handshakes cleanly, but return error now.
+          signers.remove(vin);
+        }
       }
 
       return Response.ok(jsonEncode(commandRes), headers: {'Content-Type': 'application/json'});
