@@ -71,7 +71,10 @@ class TVCPSigner {
     final sessionInfoBytes = response.sessionInfo;
 
     final info = SessionInfo.fromBuffer(sessionInfoBytes);
-    print('TVCPSigner[$vin]: proto-parsed status=${info.status}');
+    print('TVCPSigner[$vin]: handshake domain=$domain '
+        'status=${info.status} counter=${info.counter} '
+        'epochLen=${info.epoch.length} clockTime=${info.clockTime} '
+        'pubKeyLen=${info.publicKey.length}');
 
     // Only trust the proto-generated field 5 for the status check.
     // Field 7 exists in some firmware responses but is NOT the status field —
@@ -86,8 +89,12 @@ class TVCPSigner {
     }
 
     final vehiclePubKey = Uint8List.fromList(info.publicKey);
+    if (vehiclePubKey.isEmpty) {
+      throw Exception('TVCPSigner[$vin]: vehicle returned empty publicKey for $domain handshake — cannot derive shared secret');
+    }
     final sharedSecret = SecurityUtils().deriveSharedSecret(vehiclePubKey);
-    if (sharedSecret == null) throw Exception('Failed to derive shared secret');
+    if (sharedSecret == null) throw Exception('Failed to derive shared secret for $domain');
+    print('TVCPSigner[$vin]: shared secret derived (${sharedSecret.length}B) for $domain');
 
     final hmac = Hmac(sha256, sharedSecret);
     final hmacKeyBytes = hmac.convert(utf8.encode('authenticated command'));
@@ -657,7 +664,7 @@ class TVCPSigner {
     }
 
     final session = _sessions[domain]!;
-    
+
     if (!session.isReady) {
       throw Exception('Session not ready for $domain. Handshake may be required.');
     }
@@ -666,6 +673,10 @@ class TVCPSigner {
     session.counter += 1;
     final now = (DateTime.now().millisecondsSinceEpoch / 1000).round();
     final expiresAt = now - session.clockDeltaSeconds! + 30; // 30s window in vehicle time
+    print('TVCPSigner[$vin]: signing $commandName domain=$domain '
+        'counter=${session.counter} clockDelta=${session.clockDeltaSeconds} '
+        'expiresAt=$expiresAt epochLen=${session.epoch!.length} '
+        'hmacKeyLen=${session.hmacKey!.length}');
 
     final hmacData = HMAC_Personalized_Signature_Data(
       epoch: session.epoch,
