@@ -188,6 +188,96 @@ void main(List<String> args) async {
         }
       }
 
+      // --- Decode RoutableMessage to check vehicle-level fault status ---
+      // Tesla returns HTTP 200 even when the vehicle signals an error inside
+      // the RoutableMessage (e.g. MESSAGEFAULT_ERROR_INVALID_TOKEN_OR_COUNTER).
+      // Decode the response and act on the fault code before returning.
+      final responseB64 = commandRes['response'];
+      if (responseB64 is String && responseB64.isNotEmpty) {
+        try {
+          final rm = RoutableMessage.fromBuffer(base64Decode(responseB64));
+          if (rm.hasSignedMessageStatus()) {
+            final status = rm.signedMessageStatus;
+            final fault = status.hasSignedMessageFault()
+                ? status.signedMessageFault
+                : MessageFault_E.MESSAGEFAULT_ERROR_NONE;
+
+            if (fault != MessageFault_E.MESSAGEFAULT_ERROR_NONE) {
+              final faultName = fault.name;
+              print('TVCPProxy[$vin]: vehicle fault in RoutableMessage: $faultName');
+
+              // Session expired or counter mismatch → re-handshake once and retry
+              if (fault == MessageFault_E.MESSAGEFAULT_ERROR_INVALID_TOKEN_OR_COUNTER ||
+                  fault == MessageFault_E.MESSAGEFAULT_ERROR_INVALID_SIGNATURE ||
+                  fault == MessageFault_E.MESSAGEFAULT_ERROR_INCORRECT_EPOCH ||
+                  fault == MessageFault_E.MESSAGEFAULT_ERROR_WRONG_PERSONALIZATION ||
+                  fault == MessageFault_E.MESSAGEFAULT_ERROR_TIME_EXPIRED ||
+                  fault == MessageFault_E.MESSAGEFAULT_ERROR_TIME_TO_LIVE_TOO_LONG) {
+                print('TVCPProxy[$vin]: session stale ($faultName) — re-handshaking and retrying...');
+                commandRes = await doHandshakeAndSend(isRetry: true);
+                // Re-check the retried response
+                final retryB64 = commandRes['response'];
+                if (retryB64 is String) {
+                  try {
+                    final retryRm = RoutableMessage.fromBuffer(base64Decode(retryB64));
+                    if (retryRm.hasSignedMessageStatus()) {
+                      final retryFault = retryRm.signedMessageStatus.hasSignedMessageFault()
+                          ? retryRm.signedMessageStatus.signedMessageFault
+                          : MessageFault_E.MESSAGEFAULT_ERROR_NONE;
+                      if (retryFault != MessageFault_E.MESSAGEFAULT_ERROR_NONE) {
+                        return Response.internalServerError(
+                          body: jsonEncode({'error': retryFault.name, 'type': 'VehicleFault'}),
+                          headers: {'Content-Type': 'application/json'},
+                        );
+                      }
+                    }
+                  } catch (_) {}
+                }
+              }
+
+              // Virtual key not on vehicle's keychain
+              else if (fault == MessageFault_E.MESSAGEFAULT_ERROR_UNKNOWN_KEY_ID ||
+                       fault == MessageFault_E.MESSAGEFAULT_ERROR_INACTIVE_KEY ||
+                       fault == MessageFault_E.MESSAGEFAULT_ERROR_INSUFFICIENT_PRIVILEGES ||
+                       fault == MessageFault_E.MESSAGEFAULT_ERROR_KEYCHAIN_IS_FULL) {
+                signers.remove(vin);
+                return Response.forbidden(
+                  jsonEncode({'error': faultName, 'type': 'VirtualKeyNotRegistered'}),
+                  headers: {'Content-Type': 'application/json'},
+                );
+              }
+
+              // Vehicle busy → retry with back-off
+              else if (fault == MessageFault_E.MESSAGEFAULT_ERROR_BUSY) {
+                print('TVCPProxy[$vin]: vehicle busy (from RoutableMessage) — retrying after 2s...');
+                await Future.delayed(const Duration(seconds: 2));
+                commandRes = await doHandshakeAndSend();
+              }
+
+              // Timeout → uncertain success (command may have executed)
+              else if (fault == MessageFault_E.MESSAGEFAULT_ERROR_TIMEOUT) {
+                return Response.ok(
+                  jsonEncode({'result': true, 'uncertain': true,
+                      'reason': 'Vehicle timed out responding — command may have executed.'}),
+                  headers: {'Content-Type': 'application/json'},
+                );
+              }
+
+              // Anything else → return the fault name so the client can debug
+              else {
+                return Response.internalServerError(
+                  body: jsonEncode({'error': faultName, 'type': 'VehicleFault'}),
+                  headers: {'Content-Type': 'application/json'},
+                );
+              }
+            }
+          }
+        } catch (e) {
+          // Non-fatal: if RoutableMessage decoding fails, proceed with the raw response.
+          print('TVCPProxy[$vin]: could not decode RoutableMessage for fault check: $e');
+        }
+      }
+
       return Response.ok(jsonEncode(commandRes), headers: {'Content-Type': 'application/json'});
 
     } on _VehicleOfflineException {
