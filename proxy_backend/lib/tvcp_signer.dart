@@ -106,6 +106,14 @@ class TVCPSigner {
     return _sessions[domain]!.isReady;
   }
 
+  /// Resets only the specified domain's session, preserving the other domain.
+  /// Use this on retry so a failing INFOTAINMENT re-handshake doesn't also
+  /// invalidate a perfectly healthy VCSEC session, and vice versa.
+  void resetDomain(Domain domain) {
+    _sessions[domain] = TVCPSession(domain);
+    print('TVCPSigner[$vin]: reset session for $domain');
+  }
+
   static Domain getDomainForCommand(String commandName) {
     switch (commandName) {
       case 'door_lock':

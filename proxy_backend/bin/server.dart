@@ -45,103 +45,175 @@ void main(List<String> args) async {
     }
     final token = authHeader.substring(7);
 
-    // Get or Create Signer
-    if (!signers.containsKey(vin)) {
-      signers[vin] = TVCPSigner(vin);
-    }
+    // Get or create signer. A single TVCPSigner holds sessions for BOTH domains
+    // (VCSEC and INFOTAINMENT) so we never lose a healthy domain when retrying.
+    signers.putIfAbsent(vin, () => TVCPSigner(vin));
     final signer = signers[vin]!;
 
-    // Optional regional fleet API base URL forwarded from the Flutter client.
-    // The client sets X-Fleet-Api-Base-Url after calling updateRegion() so the
-    // proxy hits the correct regional endpoint (EU/NA/APAC) instead of the
-    // hardcoded NA URL.  Falls back to NA if the header is absent.
+    // Regional fleet API base URL forwarded from the Flutter client.
     final fleetBaseUrl = request.headers['x-fleet-api-base-url'];
 
     try {
       final domain = TVCPSigner.getDomainForCommand(command);
 
-      // Parse request body before the nested closure captures it.
-      final body = await request.readAsString();
+      // Parse request body once before closures capture it.
+      final bodyStr = await request.readAsString();
       Map<String, dynamic>? payload;
-      if (body.isNotEmpty) {
-        try {
-          payload = jsonDecode(body) as Map<String, dynamic>;
-        } catch (_) {}
+      if (bodyStr.isNotEmpty) {
+        try { payload = jsonDecode(bodyStr) as Map<String, dynamic>; } catch (_) {}
       }
 
-      // Perform handshake (if needed) then sign and send the command.
-      // On Unauthorized response the caller retries with isRetry=true which
-      // forces a fresh handshake before re-signing.
+      // ---------------------------------------------------------------------------
+      // doHandshakeAndSend
+      // Performs the TVCP session handshake if needed, then signs and sends the
+      // command. On retry, only the failing domain's session is reset so the
+      // other domain's healthy session is preserved (e.g. retrying INFOTAINMENT
+      // doesn't invalidate a valid VCSEC session used by lock/unlock).
+      // ---------------------------------------------------------------------------
       Future<Map<String, dynamic>> doHandshakeAndSend({bool isRetry = false}) async {
         if (!signer.isSessionReady(domain) || isRetry) {
           if (isRetry) {
-            print('Session rejected by vehicle — re-handshaking for $vin...');
-            signers[vin] = TVCPSigner(vin);
+            print('TVCPProxy[$vin]: session rejected — re-handshaking domain=$domain only');
+            signer.resetDomain(domain); // ← domain-scoped reset, keeps other domain intact
           }
-          final freshSigner = signers[vin]!;
-          final reqMsg = await freshSigner.createSessionInfoRequest(domain);
+          final reqMsg = await signer.createSessionInfoRequest(domain);
           final hsPayload = base64Encode(reqMsg.writeToBuffer());
           final hsRes = await teslaApi.sendSignedCommand(vin, hsPayload, token, fleetBaseUrl: fleetBaseUrl);
-          final responseObj2 = _safeGet(hsRes, 'response');
+
+          // Handle vehicle-offline during handshake itself
+          final hsStatusCode = _safeGet(hsRes, 'statusCode');
+          final hsError = (_safeGet(hsRes, 'error') ?? '').toString().toLowerCase();
+          if (hsStatusCode == 408 || hsError.contains('offline') || hsError.contains('not_present')) {
+            throw _VehicleOfflineException();
+          }
+
+          final responseObj = _safeGet(hsRes, 'response');
           String? resB64;
-          if (responseObj2 is String) {
-            resB64 = responseObj2;
-          } else if (responseObj2 != null) {
-            final nested = _safeGet(responseObj2, 'routable_message');
+          if (responseObj is String) {
+            resB64 = responseObj;
+          } else if (responseObj != null) {
+            final nested = _safeGet(responseObj, 'routable_message');
             if (nested is String) resB64 = nested;
           }
-          if (resB64 == null) throw Exception('Invalid handshake response: $hsRes');
-          await freshSigner.processSessionInfoResponse(
+          if (resB64 == null) throw Exception('Invalid handshake response from Tesla: $hsRes');
+          await signer.processSessionInfoResponse(
               domain, RoutableMessage.fromBuffer(base64Decode(resB64)));
-          print('Re-handshake successful for $vin');
+          print('TVCPProxy[$vin]: handshake ${isRetry ? "re-" : ""}established for $domain');
         }
 
-        final activeSigner = signers[vin]!;
-        final signedB64 = await activeSigner.signCommand(command, data: payload);
-        print('Sending command $command to $vin${isRetry ? " (retry)" : ""}...');
+        final signedB64 = await signer.signCommand(command, data: payload);
+        print('TVCPProxy[$vin]: sending $command (domain=$domain)${isRetry ? " [retry]" : ""}');
         return teslaApi.sendSignedCommand(vin, signedB64, token, fleetBaseUrl: fleetBaseUrl);
       }
 
+      // --- First attempt ---
       var commandRes = await doHandshakeAndSend();
-      print('Command API Response: $commandRes');
+      print('TVCPProxy[$vin]: $command response: $commandRes');
 
-      // Tesla returns HTTP 200 with {response: null, error: "Unauthorized"} when
-      // the HMAC session counter is stale. Immediately re-handshake and retry once.
+      // --- Classify the Tesla response error (if any) ---
       final resError = _safeGet(commandRes, 'error');
-      if (resError != null &&
-          resError.toString().isNotEmpty &&
-          _safeGet(commandRes, 'response') == null) {
+      final statusCode = _safeGet(commandRes, 'statusCode');
+
+      if (resError != null && resError.toString().isNotEmpty) {
         final errStr = resError.toString().toLowerCase();
-        if (errStr.contains('unauthorized') || errStr.contains('session')) {
-          print('Vehicle rejected command ($resError) — retrying with fresh session for $vin...');
+
+        // 1. Vehicle offline / sleeping → return 408 so the Flutter _executeWithWakeUp
+        //    handler wakes the vehicle and retries the command automatically.
+        if (statusCode == 408 ||
+            errStr.contains('vehicle_is_offline') ||
+            errStr.contains('vehicle is offline') ||
+            errStr.contains('not_present') ||
+            errStr.contains('not present')) {
+          return Response(408, body: jsonEncode({
+            'error': 'vehicle_offline',
+            'message': 'Vehicle is not online. Wake-up required.',
+          }), headers: {'Content-Type': 'application/json'});
+        }
+
+        // 2. Session / auth errors → re-handshake the failing domain once and retry.
+        if (errStr.contains('unauthorized') ||
+            errStr.contains('invalid_signature') ||
+            errStr.contains('invalid_token_or_counter') ||
+            errStr.contains('session')) {
+          print('TVCPProxy[$vin]: session error "$resError" — re-handshaking $domain and retrying...');
           commandRes = await doHandshakeAndSend(isRetry: true);
-          print('Retry response: $commandRes');
-        } else {
-          // Non-session error (e.g. rate limit, invalid param) — reset session
-          // so the next request re-handshakes cleanly, but return error now.
+          print('TVCPProxy[$vin]: retry response: $commandRes');
+
+          // If STILL failing after re-handshake, check if it's an auth failure.
+          final retryError = (_safeGet(commandRes, 'error') ?? '').toString();
+          if (retryError.isNotEmpty) {
+            final retryErrLow = retryError.toLowerCase();
+            if (retryErrLow.contains('unauthorized') || retryErrLow.contains('key not on whitelist')) {
+              // Permanent — key not registered. Return 403 immediately.
+              signers.remove(vin);
+              return Response.forbidden(jsonEncode({
+                'error': retryError,
+                'type': 'VirtualKeyNotRegistered',
+              }), headers: {'Content-Type': 'application/json'});
+            }
+          }
+        }
+
+        // 3. Vehicle busy → retry after a short back-off.
+        else if (errStr.contains('busy')) {
+          print('TVCPProxy[$vin]: vehicle busy — retrying after 2s...');
+          await Future.delayed(const Duration(seconds: 2));
+          commandRes = await doHandshakeAndSend();
+        }
+
+        // 4. Command timed out → may have executed; return uncertain success
+        //    so the Flutter UI doesn't retry and cause a duplicate action.
+        else if (errStr.contains('timeout')) {
+          print('TVCPProxy[$vin]: command $command timed out — treating as uncertain success.');
+          return Response.ok(jsonEncode({
+            'result': true,
+            'reason': 'Command timed out but may have executed on the vehicle.',
+          }), headers: {'Content-Type': 'application/json'});
+        }
+
+        // 5. Key not on whitelist (permanent) → 403.
+        else if (errStr.contains('key not on whitelist') || errStr.contains('whitelist')) {
+          signers.remove(vin);
+          return Response.forbidden(jsonEncode({
+            'error': resError.toString(),
+            'type': 'VirtualKeyNotRegistered',
+          }), headers: {'Content-Type': 'application/json'});
+        }
+
+        // 6. Anything else — clear session so the next request re-handshakes cleanly,
+        //    but still return the error body so the client has full context.
+        else {
+          print('TVCPProxy[$vin]: unclassified error "$resError" — clearing session for next request.');
           signers.remove(vin);
         }
       }
 
       return Response.ok(jsonEncode(commandRes), headers: {'Content-Type': 'application/json'});
+
+    } on _VehicleOfflineException {
+      // Raised during handshake when the vehicle is sleeping.
+      return Response(408, body: jsonEncode({
+        'error': 'vehicle_offline',
+        'message': 'Vehicle is not online. Wake-up required.',
+      }), headers: {'Content-Type': 'application/json'});
+
     } catch (e, stack) {
-      print('Proxy Error for $vin: $e');
+      print('TVCPProxy[$vin]: error for $command: $e');
       print(stack);
 
       final msg = e.toString();
 
-      // Virtual key whitelist rejection — return 403 so the Flutter client
-      // surfaces it as a permanent error rather than falling back to direct API.
+      // Virtual key whitelist rejection → 403.
       if (msg.contains('whitelist') || msg.contains('Key not on')) {
-        signers.remove(vin); // force re-handshake if key is added later
+        signers.remove(vin);
         return Response.forbidden(jsonEncode({
           'error': msg,
           'type': 'VirtualKeyNotRegistered',
         }), headers: {'Content-Type': 'application/json'});
       }
 
-      // Session errors: reset signer so next attempt re-handshakes cleanly.
-      if (msg.contains('Session')) {
+      // Session setup failure → clear signer so next request re-handshakes.
+      if (msg.contains('Session') || msg.contains('handshake')) {
         signers.remove(vin);
       }
 
@@ -727,37 +799,75 @@ int _skipField(Uint8List bytes, int pos, int wireType) {
 // ---------------------------------------------------------------------------
 
 String? _telemetryFieldNumToFirestore(int fieldNum) {
+  // Field numbers from: teslamotors/fleet-telemetry (protos/vehicle_data.proto)
   const map = {
-    1:   'batteryLevel',       // BatteryLevel (% as double 0-100)
-    2:   'odometer',           // Odometer
-    3:   'speed',              // VehicleSpeed
-    4:   'chargingState',      // ChargingState (string: Charging/Stopped/etc)
-    5:   'chargerPower',       // ChargerPower (kW)
-    6:   'chargeEnergyAdded',  // ChargeEnergyAdded (kWh)
-    7:   'timeToFullCharge',   // TimeToFullCharge (hours)
-    8:   'chargeLimitSoc',     // ChargeLimitSoc (%)
-    9:   'chargeCurrentRequest', // ChargeCurrentRequest (A)
-    10:  'isLocked',           // Locked
-    11:  'isSentryModeOn',     // SentryModeActive
-    12:  'shiftState',         // Gear (P/D/R/N/null)
-    13:  'location',           // Location (LocationValue)
-    14:  'batteryRange',       // BatteryRange (mi)
-    15:  'idealBatteryRange',  // IdealBatteryRange
-    16:  'insideTemp',         // InsideTempEstimate
-    17:  'outsideTemp',        // OutsideTempFiltered
-    18:  'isClimateOn',        // HvacAutoMode or ClimateKeeperMode
-    19:  'driverTemp',         // DriverTempSetting
-    20:  'passengerTemp',      // PassengerTempSetting
-    21:  'power',              // PowerValue (kW at wheels)
-    22:  'heading',            // Heading
-    23:  'chargerVoltage',     // ChargerVoltage
-    24:  'batteryHeaterOn',    // BatteryHeaterOn
-    25:  'seatHeaterLeft',     // SeatHeaterLeft
-    26:  'seatHeaterRight',    // SeatHeaterRight
-    27:  'steeringWheelHeater',// SteeringWheelHeatLevel
-    28:  'frontTrunkState',    // FrontTrunkOpen
-    29:  'rearTrunkState',     // RearTrunkOpen
-    30:  'softwareVersion',    // Version
+    // Battery / Charging
+    1:   'batteryLevel',            // BatteryLevel (% 0-100)
+    2:   'odometer',                // Odometer (miles/km)
+    3:   'speed',                   // VehicleSpeed
+    4:   'chargingState',           // ChargingState / DetailedChargeState
+    5:   'chargerPower',            // ChargerPower (kW)
+    6:   'chargeEnergyAdded',       // ChargeEnergyAdded (kWh)
+    7:   'timeToFullCharge',        // TimeToFullCharge (hours)
+    8:   'chargeLimitSoc',          // ChargeLimitSoc (%)
+    9:   'chargeCurrentRequest',    // ChargeCurrentRequest (A)
+    10:  'isLocked',                // Locked
+    11:  'isSentryModeOn',          // SentryModeActive
+    12:  'shiftState',              // Gear (P/D/R/N)
+    13:  'location',                // Location (lat/lng)
+    14:  'batteryRange',            // BatteryRange (mi)
+    15:  'idealBatteryRange',       // IdealBatteryRange (mi)
+    16:  'insideTemp',              // InsideTempEstimate (°C)
+    17:  'outsideTemp',             // OutsideTempFiltered (°C)
+    18:  'isClimateOn',             // HvacAutoMode
+    19:  'driverTemp',              // DriverTempSetting (°C)
+    20:  'passengerTemp',           // PassengerTempSetting (°C)
+    21:  'power',                   // Power (kW, negative = regen)
+    22:  'heading',                 // Heading (degrees 0-360)
+    23:  'chargerVoltage',          // ChargerVoltage (V)
+    24:  'batteryHeaterOn',         // BatteryHeaterOn
+    25:  'seatHeaterLeft',          // SeatHeaterLeft (0-3)
+    26:  'seatHeaterRight',         // SeatHeaterRight (0-3)
+    27:  'steeringWheelHeater',     // SteeringWheelHeatLevel
+    28:  'frontTrunkState',         // FrontTrunkOpen (bool)
+    29:  'rearTrunkState',          // RearTrunkOpen (bool)
+    30:  'softwareVersion',         // Version (string)
+    // Extended battery
+    31:  'usableBatteryLevel',      // UsableBatteryLevel (%)
+    32:  'chargeCurrentRequestMax', // ChargeCurrentRequestMax (A)
+    33:  'fastChargerPresent',      // FastChargerPresent (bool)
+    34:  'fastChargerType',         // FastChargerType (string: "Tesla","CCS",etc)
+    35:  'chargePortOpen',          // ChargePortDoorOpen (bool)
+    36:  'scheduledChargingMode',   // ScheduledChargingMode (string)
+    37:  'scheduledChargingPending',// ScheduledChargingPending (bool)
+    38:  'managedChargingActive',   // ManagedChargingActive (bool)
+    // Climate extended
+    39:  'seatHeaterRearLeft',      // SeatHeaterRearLeft (0-3)
+    40:  'seatHeaterRearRight',     // SeatHeaterRearRight (0-3)
+    41:  'seatHeaterRearCenter',    // SeatHeaterRearCenter (0-3)
+    42:  'climateKeeperMode',       // ClimateKeeperMode (string: off/dog/camp)
+    43:  'bioweaponDefenseMode',    // HvacBioweaponModeActive (bool)
+    44:  'isPreconditioning',       // Preconditioning (bool)
+    45:  'frontDefrosterOn',        // DefrostMode (bool)
+    // TPMS
+    46:  'tpmsPressureFl',          // TpmsPressureFl (bar)
+    47:  'tpmsPressureFr',          // TpmsPressureFr (bar)
+    48:  'tpmsPressureRl',          // TpmsPressureRl (bar)
+    49:  'tpmsPressureRr',          // TpmsPressureRr (bar)
+    // Vehicle state
+    50:  'valetMode',               // ValetMode (bool)
+    51:  'sentryModeAvailable',     // SentryModeAvailable (bool)
+    52:  'windowsOpen',             // Any window open (bool)
+    53:  'displayName',             // VehicleName (string)
+    // Software update
+    54:  'softwareUpdateStatus',    // SoftwareUpdateStatus (string)
+    55:  'softwareUpdateVersion',   // SoftwareUpdateVersion (string)
+    56:  'softwareUpdateProgress',  // SoftwareUpdateDownloadPercent (int)
+    // Drive / motion
+    57:  'latitude',                // GPS latitude (legacy, prefer Location)
+    58:  'longitude',               // GPS longitude (legacy, prefer Location)
+    59:  'estBatteryRange',         // EstBatteryRange (mi)
+    60:  'chargerPhases',           // ChargerPhases (1-3)
   };
   return map[fieldNum];
 }
@@ -812,13 +922,44 @@ String? _telemetryKeyToFirestore(String key) {
     'SeatHeaterLeft':        'seatHeaterLeft',
     'SeatHeaterRight':       'seatHeaterRight',
     'SteeringWheelHeatLevel':'steeringWheelHeater',
+    // Extended charging
+    'ChargeCurrentRequestMax':  'chargeCurrentRequestMax',
+    'UsableBatteryLevel':       'usableBatteryLevel',
+    'FastChargerPresent':       'fastChargerPresent',
+    'FastChargerType':          'fastChargerType',
+    'ChargePortDoorOpen':       'chargePortOpen',
+    'ScheduledChargingMode':    'scheduledChargingMode',
+    'ScheduledChargingPending': 'scheduledChargingPending',
+    'ManagedChargingActive':    'managedChargingActive',
+    'ChargerPhases':            'chargerPhases',
+    // Extended climate
+    'SeatHeaterRearLeft':       'seatHeaterRearLeft',
+    'SeatHeaterRearRight':      'seatHeaterRearRight',
+    'SeatHeaterRearCenter':     'seatHeaterRearCenter',
+    'HvacBioweaponModeActive':  'bioweaponDefenseMode',
+    'Preconditioning':          'isPreconditioning',
+    'DefrostMode':              'frontDefrosterOn',
+    'CabinOverheatProtection':  'cabinOverheatProtection',
     // TPMS
-    'TpmsPressureFl':        'tpmsPressureFl',
-    'TpmsPressureFr':        'tpmsPressureFr',
-    'TpmsPressureRl':        'tpmsPressureRl',
-    'TpmsPressureRr':        'tpmsPressureRr',
+    'TpmsPressureFl':           'tpmsPressureFl',
+    'TpmsPressureFr':           'tpmsPressureFr',
+    'TpmsPressureRl':           'tpmsPressureRl',
+    'TpmsPressureRr':           'tpmsPressureRr',
+    // Vehicle state
+    'ValetMode':                'valetMode',
+    'SentryModeAvailable':      'sentryModeAvailable',
+    'WindowState':              'windowsOpen',
+    // Software update
+    'SoftwareUpdateStatus':     'softwareUpdateStatus',
+    'SoftwareUpdateVersion':    'softwareUpdateVersion',
+    'SoftwareUpdateDownloadPercent': 'softwareUpdateProgress',
     // Meta
-    'Version':               'softwareVersion',
+    'Version':                  'softwareVersion',
   };
   return map[key];
+}
+
+/// Sentinel exception used internally when the vehicle is offline during handshake.
+class _VehicleOfflineException implements Exception {
+  const _VehicleOfflineException();
 }
