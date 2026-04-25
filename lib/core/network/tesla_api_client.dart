@@ -276,33 +276,62 @@ class TeslaApiClient {
           if (body is Map) {
             final teslaError = body['error'] as String?;
             if (teslaError != null && teslaError.isNotEmpty && body['response'] == null) {
-              if (teslaError.toLowerCase().contains('key not on whitelist')) {
+              final errLow = teslaError.toLowerCase();
+              if (errLow.contains('key not on whitelist') || errLow.contains('whitelist')) {
                 throw Exception(
-                  'Virtual key not on vehicle whitelist. Open https://tesla.com/_ak/thedevelopersharma.com '
-                  'in the Tesla app and tap your car to register the key.',
+                  'Virtual key not registered with vehicle. Open the Tesla app → '
+                  'Security & Privacy → Third-Party App Keys and tap your car to add the key.',
                 );
               }
-              if (teslaError.toLowerCase().contains('unauthorized')) {
-                // "Unauthorized" from Tesla means the vehicle rejected the signed command.
-                // If the virtual key IS already added, this means the proxy's private key
-                // doesn't match the public key registered with Tesla — a proxy configuration
-                // issue. Retrying won't help; surface a clear diagnostic immediately.
-                debugPrint('TeslaApiClient: Proxy Unauthorized for $command — proxy signing key mismatch or session expired.');
-                throw Exception('PROXY_AUTH_FAILED');
+              if (errLow.contains('unauthorized')) {
+                // The proxy already re-handshakes on Unauthorized. Receiving this
+                // after proxy retry means the signing key is not enrolled on the vehicle.
+                throw Exception(
+                  'Vehicle rejected the command. Please ensure the virtual key is '
+                  'registered via the Tesla app and try again.',
+                );
+              }
+              if (errLow.contains('vehicle_offline') || errLow.contains('not online')) {
+                // Proxy detected vehicle offline — raise as 408-style so _executeWithWakeUp catches it.
+                throw _VehicleOfflineProxyException(teslaError);
+              }
+              // Successful-but-uncertain (proxy timed out but may have executed)
+              if (body['result'] == true && body['uncertain'] == true) {
+                return response; // treat as success
               }
               throw Exception('Tesla command error: $teslaError');
             }
           }
           return response;
+        } on _VehicleOfflineProxyException {
+          // Proxy detected vehicle offline. Re-throw as DioException-like so
+          // _executeWithWakeUp in the repository catches it and wakes the vehicle.
+          // We create a fake DioException with statusCode=408.
+          throw DioException(
+            requestOptions: RequestOptions(path: ''),
+            type: DioExceptionType.badResponse,
+            response: Response(
+              statusCode: 408,
+              requestOptions: RequestOptions(path: ''),
+              data: {'error': 'vehicle_offline'},
+            ),
+          );
         } catch (e) {
           if (e is DioException) {
             final statusCode = e.response?.statusCode;
             final errorBody = e.response?.data;
             debugPrint('TeslaApiClient: Proxy signing/sending failed: $statusCode - $errorBody');
 
-            // 403 "vehicle is offline" is commonly returned when the car is sleeping
+            // 408 from proxy = vehicle is sleeping. Re-throw DioException with 408
+            // so _executeWithWakeUp in the repository handles wake-up automatically.
+            if (statusCode == 408) {
+              debugPrint('TeslaApiClient: Proxy returned 408 (vehicle offline) for $command — propagating for wake-up handling.');
+              rethrow;
+            }
+
+            // 403 "vehicle is offline" — treat as 408 for wake-up handling.
             if (statusCode == 403 && errorBody is Map &&
-                (errorBody['error'] == 'vehicle is offline' || errorBody['error']?.toString().contains('offline') == true)) {
+                (errorBody['error']?.toString().contains('offline') == true)) {
               proxyAttempts++;
               if (proxyAttempts >= 5) rethrow;
 
@@ -1036,4 +1065,12 @@ class TeslaApiClient {
   Future<void> revokeShareInvite(String vin, String inviteId) async {
     await _dio.post('/api/1/vehicles/$vin/invitations/$inviteId/revoke');
   }
+}
+
+/// Internal exception raised when the proxy reports the vehicle is offline.
+/// Caught in [TeslaApiClient._postSignedCommand] and re-thrown as a [DioException]
+/// with statusCode=408 so [VehicleRepositoryImpl._executeWithWakeUp] handles wake-up.
+class _VehicleOfflineProxyException implements Exception {
+  final String message;
+  const _VehicleOfflineProxyException(this.message);
 }
