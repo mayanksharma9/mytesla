@@ -204,112 +204,113 @@ class TVCPSigner {
         break;
 
       // --- Climate (INFOTAINMENT domain) ---
+      // NOTE: All INFOTAINMENT payloads MUST be wrapped in CarServer.Action.
+      // The HMAC is computed over Action.bytes; sending VehicleAction.bytes
+      // directly produces a wrong tag and the vehicle returns "Unauthorized".
       case 'auto_conditioning_start':
         domain = Domain.DOMAIN_INFOTAINMENT;
-        payloadBytes = CarServer.VehicleAction(
+        payloadBytes = CarServer.Action(vehicleAction: CarServer.VehicleAction(
           hvacAutoAction: CarServer.HvacAutoAction(powerOn: true),
-        ).writeToBuffer();
+        )).writeToBuffer();
         break;
       case 'auto_conditioning_stop':
         domain = Domain.DOMAIN_INFOTAINMENT;
-        payloadBytes = CarServer.VehicleAction(
+        payloadBytes = CarServer.Action(vehicleAction: CarServer.VehicleAction(
           hvacAutoAction: CarServer.HvacAutoAction(powerOn: false),
-        ).writeToBuffer();
+        )).writeToBuffer();
         break;
       case 'set_temps':
         domain = Domain.DOMAIN_INFOTAINMENT;
-        payloadBytes = CarServer.VehicleAction(
+        payloadBytes = CarServer.Action(vehicleAction: CarServer.VehicleAction(
           hvacTemperatureAdjustmentAction: CarServer.HvacTemperatureAdjustmentAction(
             driverTempCelsius: (params['driver_temp'] ?? 22.0).toDouble(),
             passengerTempCelsius: (params['passenger_temp'] ?? 22.0).toDouble(),
           ),
-        ).writeToBuffer();
+        )).writeToBuffer();
         break;
       case 'remote_seat_heater_request':
         domain = Domain.DOMAIN_INFOTAINMENT;
         final heaterIdx = params['seat_position'] ?? 0;
         final level = params['level'] ?? 0;
-        
         final action = CarServer.HvacSeatHeaterActions_HvacSeatHeaterAction();
         _setSeatHeaterLevel(action, level);
         _setSeatHeaterPosition(action, heaterIdx);
-
-        payloadBytes = CarServer.VehicleAction(
+        payloadBytes = CarServer.Action(vehicleAction: CarServer.VehicleAction(
           hvacSeatHeaterActions: CarServer.HvacSeatHeaterActions(
             hvacSeatHeaterAction: [action],
           ),
-        ).writeToBuffer();
+        )).writeToBuffer();
         break;
 
       // --- Charging (INFOTAINMENT domain) ---
       case 'charge_start':
         domain = Domain.DOMAIN_INFOTAINMENT;
-        payloadBytes = CarServer.VehicleAction(
+        payloadBytes = CarServer.Action(vehicleAction: CarServer.VehicleAction(
           chargingStartStopAction: CarServer.ChargingStartStopAction(start: Common.Void()),
-        ).writeToBuffer();
+        )).writeToBuffer();
         break;
       case 'charge_stop':
         domain = Domain.DOMAIN_INFOTAINMENT;
-        payloadBytes = CarServer.VehicleAction(
+        payloadBytes = CarServer.Action(vehicleAction: CarServer.VehicleAction(
           chargingStartStopAction: CarServer.ChargingStartStopAction(stop: Common.Void()),
-        ).writeToBuffer();
+        )).writeToBuffer();
         break;
       case 'set_charge_limit':
         domain = Domain.DOMAIN_INFOTAINMENT;
-        payloadBytes = CarServer.VehicleAction(
+        payloadBytes = CarServer.Action(vehicleAction: CarServer.VehicleAction(
           chargingSetLimitAction: CarServer.ChargingSetLimitAction(percent: params['percent'] ?? 80),
-        ).writeToBuffer();
+        )).writeToBuffer();
         break;
       case 'charge_port_door_open':
         domain = Domain.DOMAIN_INFOTAINMENT;
-        payloadBytes = CarServer.VehicleAction(
+        payloadBytes = CarServer.Action(vehicleAction: CarServer.VehicleAction(
           chargePortDoorOpen: CarServer.ChargePortDoorOpen(),
-        ).writeToBuffer();
+        )).writeToBuffer();
         break;
       case 'charge_port_door_close':
         domain = Domain.DOMAIN_INFOTAINMENT;
-        payloadBytes = CarServer.VehicleAction(
+        payloadBytes = CarServer.Action(vehicleAction: CarServer.VehicleAction(
           chargePortDoorClose: CarServer.ChargePortDoorClose(),
-        ).writeToBuffer();
+        )).writeToBuffer();
         break;
 
       // --- Alerts (INFOTAINMENT domain) ---
       case 'honk_horn':
         domain = Domain.DOMAIN_INFOTAINMENT;
-        payloadBytes = CarServer.VehicleAction(
+        payloadBytes = CarServer.Action(vehicleAction: CarServer.VehicleAction(
           vehicleControlHonkHornAction: CarServer.VehicleControlHonkHornAction(),
-        ).writeToBuffer();
+        )).writeToBuffer();
         break;
       case 'flash_lights':
         domain = Domain.DOMAIN_INFOTAINMENT;
-        payloadBytes = CarServer.VehicleAction(
+        payloadBytes = CarServer.Action(vehicleAction: CarServer.VehicleAction(
           vehicleControlFlashLightsAction: CarServer.VehicleControlFlashLightsAction(),
-        ).writeToBuffer();
+        )).writeToBuffer();
         break;
-      
+
       // --- Security System ---
       case 'set_sentry_mode':
         domain = Domain.DOMAIN_INFOTAINMENT;
-        payloadBytes = CarServer.VehicleAction(
+        payloadBytes = CarServer.Action(vehicleAction: CarServer.VehicleAction(
           vehicleControlSetSentryModeAction: CarServer.VehicleControlSetSentryModeAction(on: params['on'] ?? false),
-        ).writeToBuffer();
+        )).writeToBuffer();
         break;
 
       case 'set_charging_amps':
         domain = Domain.DOMAIN_INFOTAINMENT;
-        payloadBytes = CarServer.VehicleAction(
+        payloadBytes = CarServer.Action(vehicleAction: CarServer.VehicleAction(
           setChargingAmpsAction: CarServer.SetChargingAmpsAction(chargingAmps: params['charging_amps'] ?? 16),
-        ).writeToBuffer();
+        )).writeToBuffer();
         break;
 
       case 'set_valet_mode':
         domain = Domain.DOMAIN_INFOTAINMENT;
-        payloadBytes = CarServer.VehicleAction(
+        payloadBytes = CarServer.Action(vehicleAction: CarServer.VehicleAction(
           vehicleControlSetValetModeAction: CarServer.VehicleControlSetValetModeAction(
             on: params['on'] ?? false,
             password: params['password'] as String? ?? '',
           ),
-        ).writeToBuffer();
+        )).writeToBuffer();
         break;
 
       case 'set_climate_keeper_mode':
@@ -337,102 +338,102 @@ class TVCPSigner {
           default:
             keeperMode = CarServer.HvacClimateKeeperAction_ClimateKeeperAction_E.ClimateKeeperAction_Off;
         }
-        payloadBytes = CarServer.VehicleAction(
+        payloadBytes = CarServer.Action(vehicleAction: CarServer.VehicleAction(
           hvacClimateKeeperAction: CarServer.HvacClimateKeeperAction(
             climateKeeperAction: keeperMode,
           ),
-        ).writeToBuffer();
+        )).writeToBuffer();
         break;
 
       case 'window_control':
         domain = Domain.DOMAIN_INFOTAINMENT;
         final windowCmd = params['command'] as String? ?? 'vent';
-        payloadBytes = CarServer.VehicleAction(
+        payloadBytes = CarServer.Action(vehicleAction: CarServer.VehicleAction(
           vehicleControlWindowAction: windowCmd == 'close'
               ? CarServer.VehicleControlWindowAction(close: Common.Void())
               : CarServer.VehicleControlWindowAction(vent: Common.Void()),
-        ).writeToBuffer();
+        )).writeToBuffer();
         break;
 
       case 'set_scheduled_charging':
         domain = Domain.DOMAIN_INFOTAINMENT;
-        payloadBytes = CarServer.VehicleAction(
+        payloadBytes = CarServer.Action(vehicleAction: CarServer.VehicleAction(
           scheduledChargingAction: CarServer.ScheduledChargingAction(
             enabled: params['enable'] as bool? ?? false,
             chargingTime: params['time'] as int? ?? 0,
           ),
-        ).writeToBuffer();
+        )).writeToBuffer();
         break;
 
       case 'set_scheduled_departure':
         domain = Domain.DOMAIN_INFOTAINMENT;
-        payloadBytes = CarServer.VehicleAction(
+        payloadBytes = CarServer.Action(vehicleAction: CarServer.VehicleAction(
           scheduledDepartureAction: CarServer.ScheduledDepartureAction(
             enabled: params['enable'] as bool? ?? false,
             departureTime: params['departure_time'] as int? ?? 0,
           ),
-        ).writeToBuffer();
+        )).writeToBuffer();
         break;
 
       // --- Media ---
       case 'media_toggle_playback':
         domain = Domain.DOMAIN_INFOTAINMENT;
-        payloadBytes = CarServer.VehicleAction(
+        payloadBytes = CarServer.Action(vehicleAction: CarServer.VehicleAction(
           mediaPlayAction: CarServer.MediaPlayAction(),
-        ).writeToBuffer();
+        )).writeToBuffer();
         break;
       case 'media_next_track':
         domain = Domain.DOMAIN_INFOTAINMENT;
-        payloadBytes = CarServer.VehicleAction(
+        payloadBytes = CarServer.Action(vehicleAction: CarServer.VehicleAction(
           mediaNextTrack: CarServer.MediaNextTrack(),
-        ).writeToBuffer();
+        )).writeToBuffer();
         break;
       case 'media_prev_track':
         domain = Domain.DOMAIN_INFOTAINMENT;
-        payloadBytes = CarServer.VehicleAction(
+        payloadBytes = CarServer.Action(vehicleAction: CarServer.VehicleAction(
           mediaPreviousTrack: CarServer.MediaPreviousTrack(),
-        ).writeToBuffer();
+        )).writeToBuffer();
         break;
       case 'media_volume_up':
         domain = Domain.DOMAIN_INFOTAINMENT;
-        payloadBytes = CarServer.VehicleAction(
+        payloadBytes = CarServer.Action(vehicleAction: CarServer.VehicleAction(
           mediaUpdateVolume: CarServer.MediaUpdateVolume(volumeDelta: 1),
-        ).writeToBuffer();
+        )).writeToBuffer();
         break;
       case 'media_volume_down':
         domain = Domain.DOMAIN_INFOTAINMENT;
-        payloadBytes = CarServer.VehicleAction(
+        payloadBytes = CarServer.Action(vehicleAction: CarServer.VehicleAction(
           mediaUpdateVolume: CarServer.MediaUpdateVolume(volumeDelta: -1),
-        ).writeToBuffer();
+        )).writeToBuffer();
         break;
 
       // --- Extra Climate ---
       case 'set_bioweapon_mode':
         domain = Domain.DOMAIN_INFOTAINMENT;
-        payloadBytes = CarServer.VehicleAction(
+        payloadBytes = CarServer.Action(vehicleAction: CarServer.VehicleAction(
           hvacBioweaponModeAction: CarServer.HvacBioweaponModeAction(
             on: params['on'] as bool? ?? false,
             manualOverride: params['manual_override'] as bool? ?? false,
           ),
-        ).writeToBuffer();
+        )).writeToBuffer();
         break;
       case 'set_cabin_overheat_protection':
         domain = Domain.DOMAIN_INFOTAINMENT;
-        payloadBytes = CarServer.VehicleAction(
+        payloadBytes = CarServer.Action(vehicleAction: CarServer.VehicleAction(
           setCabinOverheatProtectionAction: CarServer.SetCabinOverheatProtectionAction(
             on: params['on'] as bool? ?? false,
             fanOnly: params['fan_only'] as bool? ?? false,
           ),
-        ).writeToBuffer();
+        )).writeToBuffer();
         break;
       case 'set_preconditioning_max':
         domain = Domain.DOMAIN_INFOTAINMENT;
-        payloadBytes = CarServer.VehicleAction(
+        payloadBytes = CarServer.Action(vehicleAction: CarServer.VehicleAction(
           hvacSetPreconditioningMaxAction: CarServer.HvacSetPreconditioningMaxAction(
             on: params['on'] as bool? ?? false,
             manualOverride: params['manual_override'] as bool? ?? false,
           ),
-        ).writeToBuffer();
+        )).writeToBuffer();
         break;
 
       // --- Remote Start ---
@@ -446,23 +447,23 @@ class TVCPSigner {
       // --- Boombox ---
       case 'remote_boombox':
         domain = Domain.DOMAIN_INFOTAINMENT;
-        payloadBytes = CarServer.VehicleAction(
+        payloadBytes = CarServer.Action(vehicleAction: CarServer.VehicleAction(
           boomboxAction: CarServer.BoomboxAction(sound: params['sound'] as int? ?? 0),
-        ).writeToBuffer();
+        )).writeToBuffer();
         break;
 
       // --- Charging: Max Range / Standard ---
       case 'charge_max_range':
         domain = Domain.DOMAIN_INFOTAINMENT;
-        payloadBytes = CarServer.VehicleAction(
+        payloadBytes = CarServer.Action(vehicleAction: CarServer.VehicleAction(
           chargingStartStopAction: CarServer.ChargingStartStopAction(startMaxRange: Common.Void()),
-        ).writeToBuffer();
+        )).writeToBuffer();
         break;
       case 'charge_standard':
         domain = Domain.DOMAIN_INFOTAINMENT;
-        payloadBytes = CarServer.VehicleAction(
+        payloadBytes = CarServer.Action(vehicleAction: CarServer.VehicleAction(
           chargingStartStopAction: CarServer.ChargingStartStopAction(startStandard: Common.Void()),
-        ).writeToBuffer();
+        )).writeToBuffer();
         break;
 
       // --- Seat Cooler ---
@@ -477,7 +478,7 @@ class TVCPSigner {
             : HvacSeatCoolerActions_HvacSeatCoolerPosition_E.HvacSeatCoolerPosition_FrontLeft;
         final coolerLevel = HvacSeatCoolerActions_HvacSeatCoolerLevel_E.valueOf(coolerLevelIdx.clamp(1, 4))
             ?? HvacSeatCoolerActions_HvacSeatCoolerLevel_E.HvacSeatCoolerLevel_Off;
-        payloadBytes = CarServer.VehicleAction(
+        payloadBytes = CarServer.Action(vehicleAction: CarServer.VehicleAction(
           hvacSeatCoolerActions: CarServer.HvacSeatCoolerActions(
             hvacSeatCoolerAction: [
               CarServer.HvacSeatCoolerActions_HvacSeatCoolerAction(
@@ -486,16 +487,16 @@ class TVCPSigner {
               ),
             ],
           ),
-        ).writeToBuffer();
+        )).writeToBuffer();
         break;
 
       // --- Steering Wheel Heater ---
       case 'remote_steering_wheel_heat_level_request':
         domain = Domain.DOMAIN_INFOTAINMENT;
         final swLevel = params['level'] as int? ?? 0;
-        payloadBytes = CarServer.VehicleAction(
+        payloadBytes = CarServer.Action(vehicleAction: CarServer.VehicleAction(
           hvacSteeringWheelHeaterAction: CarServer.HvacSteeringWheelHeaterAction(powerOn: swLevel > 0),
-        ).writeToBuffer();
+        )).writeToBuffer();
         break;
 
       // --- Cabin Overheat Protection Temperature ---
@@ -506,62 +507,62 @@ class TVCPSigner {
         final copIdx = (params['cop_temp'] as int? ?? 0) + 1; // shift 0→1
         final copTemp = Vehicle.ClimateState_CopActivationTemp.valueOf(copIdx.clamp(1, 3))
             ?? Vehicle.ClimateState_CopActivationTemp.CopActivationTempLow;
-        payloadBytes = CarServer.VehicleAction(
+        payloadBytes = CarServer.Action(vehicleAction: CarServer.VehicleAction(
           setCopTempAction: CarServer.SetCopTempAction(copActivationTemp: copTemp),
-        ).writeToBuffer();
+        )).writeToBuffer();
         break;
 
       // --- Software Updates ---
       case 'schedule_software_update':
         domain = Domain.DOMAIN_INFOTAINMENT;
-        payloadBytes = CarServer.VehicleAction(
+        payloadBytes = CarServer.Action(vehicleAction: CarServer.VehicleAction(
           vehicleControlScheduleSoftwareUpdateAction:
               CarServer.VehicleControlScheduleSoftwareUpdateAction(
             offsetSec: params['offset_sec'] as int? ?? 0,
           ),
-        ).writeToBuffer();
+        )).writeToBuffer();
         break;
       case 'cancel_software_update':
         domain = Domain.DOMAIN_INFOTAINMENT;
-        payloadBytes = CarServer.VehicleAction(
+        payloadBytes = CarServer.Action(vehicleAction: CarServer.VehicleAction(
           vehicleControlCancelSoftwareUpdateAction:
               CarServer.VehicleControlCancelSoftwareUpdateAction(),
-        ).writeToBuffer();
+        )).writeToBuffer();
         break;
 
       // --- Speed Limit ---
       case 'speed_limit_set_limit':
         domain = Domain.DOMAIN_INFOTAINMENT;
-        payloadBytes = CarServer.VehicleAction(
+        payloadBytes = CarServer.Action(vehicleAction: CarServer.VehicleAction(
           drivingSetSpeedLimitAction: CarServer.DrivingSetSpeedLimitAction(
             limitMph: (params['limit_mph'] as num? ?? 50).toDouble(),
           ),
-        ).writeToBuffer();
+        )).writeToBuffer();
         break;
       case 'speed_limit_activate':
         domain = Domain.DOMAIN_INFOTAINMENT;
-        payloadBytes = CarServer.VehicleAction(
+        payloadBytes = CarServer.Action(vehicleAction: CarServer.VehicleAction(
           drivingSpeedLimitAction: CarServer.DrivingSpeedLimitAction(
             activate: true,
             pin: params['pin'] as String? ?? '',
           ),
-        ).writeToBuffer();
+        )).writeToBuffer();
         break;
       case 'speed_limit_deactivate':
         domain = Domain.DOMAIN_INFOTAINMENT;
-        payloadBytes = CarServer.VehicleAction(
+        payloadBytes = CarServer.Action(vehicleAction: CarServer.VehicleAction(
           drivingSpeedLimitAction: CarServer.DrivingSpeedLimitAction(
             activate: false,
             pin: params['pin'] as String? ?? '',
           ),
-        ).writeToBuffer();
+        )).writeToBuffer();
         break;
 
       // --- Charge Schedules ---
       case 'add_charge_schedule':
         domain = Domain.DOMAIN_INFOTAINMENT;
         final csId = params['id'] as int?;
-        payloadBytes = CarServer.VehicleAction(
+        payloadBytes = CarServer.Action(vehicleAction: CarServer.VehicleAction(
           addChargeScheduleAction: Common.ChargeSchedule(
             id: csId != null ? fixnum.Int64(csId) : null,
             daysOfWeek: _parseDaysOfWeek(params['days_of_week'] as String? ?? 'All'),
@@ -574,22 +575,22 @@ class TVCPSigner {
             latitude: (params['lat'] as num? ?? 0).toDouble(),
             longitude: (params['lon'] as num? ?? 0).toDouble(),
           ),
-        ).writeToBuffer();
+        )).writeToBuffer();
         break;
       case 'remove_charge_schedule':
         domain = Domain.DOMAIN_INFOTAINMENT;
-        payloadBytes = CarServer.VehicleAction(
+        payloadBytes = CarServer.Action(vehicleAction: CarServer.VehicleAction(
           removeChargeScheduleAction: CarServer.RemoveChargeScheduleAction(
             id: fixnum.Int64(params['id'] as int? ?? 0),
           ),
-        ).writeToBuffer();
+        )).writeToBuffer();
         break;
 
       // --- Precondition Schedules ---
       case 'add_precondition_schedule':
         domain = Domain.DOMAIN_INFOTAINMENT;
         final psId = params['id'] as int?;
-        payloadBytes = CarServer.VehicleAction(
+        payloadBytes = CarServer.Action(vehicleAction: CarServer.VehicleAction(
           addPreconditionScheduleAction: Common.PreconditionSchedule(
             id: psId != null ? fixnum.Int64(psId) : null,
             daysOfWeek: _parseDaysOfWeek(params['days_of_week'] as String? ?? 'All'),
@@ -599,25 +600,25 @@ class TVCPSigner {
             latitude: (params['lat'] as num? ?? 0).toDouble(),
             longitude: (params['lon'] as num? ?? 0).toDouble(),
           ),
-        ).writeToBuffer();
+        )).writeToBuffer();
         break;
       case 'remove_precondition_schedule':
         domain = Domain.DOMAIN_INFOTAINMENT;
-        payloadBytes = CarServer.VehicleAction(
+        payloadBytes = CarServer.Action(vehicleAction: CarServer.VehicleAction(
           removePreconditionScheduleAction: CarServer.RemovePreconditionScheduleAction(
             id: fixnum.Int64(params['id'] as int? ?? 0),
           ),
-        ).writeToBuffer();
+        )).writeToBuffer();
         break;
 
       // --- Media: Absolute Volume ---
       case 'adjust_volume':
         domain = Domain.DOMAIN_INFOTAINMENT;
-        payloadBytes = CarServer.VehicleAction(
+        payloadBytes = CarServer.Action(vehicleAction: CarServer.VehicleAction(
           mediaUpdateVolume: CarServer.MediaUpdateVolume(
             volumeAbsoluteFloat: (params['volume'] as num? ?? 0).toDouble(),
           ),
-        ).writeToBuffer();
+        )).writeToBuffer();
         break;
 
       // --- Sunroof ---
@@ -635,28 +636,28 @@ class TVCPSigner {
           default: // 'vent'
             srAction = CarServer.VehicleControlSunroofOpenCloseAction(vent: Common.Void());
         }
-        payloadBytes = CarServer.VehicleAction(
+        payloadBytes = CarServer.Action(vehicleAction: CarServer.VehicleAction(
           vehicleControlSunroofOpenCloseAction: srAction,
-        ).writeToBuffer();
+        )).writeToBuffer();
         break;
 
       // --- Navigation ---
       case 'navigation_gps_request':
         domain = Domain.DOMAIN_INFOTAINMENT;
-        payloadBytes = CarServer.VehicleAction(
+        payloadBytes = CarServer.Action(vehicleAction: CarServer.VehicleAction(
           navigationGpsRequest: CarServer.NavigationGpsRequest(
             lat: (params['lat'] as num? ?? 0).toDouble(),
             lon: (params['lon'] as num? ?? 0).toDouble(),
           ),
-        ).writeToBuffer();
+        )).writeToBuffer();
         break;
       case 'navigation_sc_request':
         domain = Domain.DOMAIN_INFOTAINMENT;
-        payloadBytes = CarServer.VehicleAction(
+        payloadBytes = CarServer.Action(vehicleAction: CarServer.VehicleAction(
           navigationSuperchargerRequest: CarServer.NavigationSuperchargerRequest(
             order: params['order'] as int? ?? 0,
           ),
-        ).writeToBuffer();
+        )).writeToBuffer();
         break;
 
       default:
