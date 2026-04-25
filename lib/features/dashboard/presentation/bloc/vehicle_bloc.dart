@@ -639,13 +639,8 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleBlocState> {
     final msg = e.toString();
     // Explicit whitelist/key-missing errors → show setup sheet
     if (msg.contains('whitelist') || msg.contains('key not on') ||
-        msg.contains('Virtual key required')) {
-      return 'VIRTUAL_KEY_NOT_ADDED';
-    }
-    // Vehicle rejected with Unauthorized — either no virtual key on vehicle, or
-    // proxy signing key doesn't match the registered virtual key.
-    // Both cases surface as VIRTUAL_KEY_NOT_ADDED so the user sees the key sheet.
-    if (msg.contains('PROXY_AUTH_FAILED')) {
+        msg.contains('Virtual key required') || msg.contains('Third-Party App Keys') ||
+        msg.contains('VirtualKeyNotRegistered') || msg.contains('rejected the command')) {
       return 'VIRTUAL_KEY_NOT_ADDED';
     }
     // Direct Fleet API 403 TVCP — key not added
@@ -659,6 +654,19 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleBlocState> {
       return 'Could not establish a secure session with the vehicle. Ensure the proxy is running and the vehicle is online, then try again.';
     }
     return msg.replaceAll('Exception: ', '');
+  }
+
+  /// Schedules a [RefreshSelectedVehicle] after [delay].
+  ///
+  /// Use this instead of immediate `add(RefreshSelectedVehicle())` after
+  /// commands so Tesla's REST API has time to propagate the state change
+  /// before we poll. Without this delay the optimistic UI update gets
+  /// overwritten by the stale response (vehicle reports old state for ~5–15s
+  /// after executing a command), making commands appear to have failed.
+  void _scheduleRefresh({Duration delay = const Duration(seconds: 10)}) {
+    Future.delayed(delay, () {
+      if (!isClosed) add(RefreshSelectedVehicle());
+    });
   }
 
   /// Cast to concrete type for cache access
@@ -937,7 +945,7 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleBlocState> {
       } else {
         await _repository.unlock(event.vehicleId);
       }
-      add(RefreshSelectedVehicle());
+      _scheduleRefresh();
     } catch (e) {
       emit(state.copyWith(
         commandError: _userFriendlyError(e),
@@ -951,11 +959,32 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleBlocState> {
   }
 
   Future<void> _onActuateTrunk(ActuateTrunk event, Emitter<VehicleBlocState> emit) async {
+    final cmdId = '${event.vehicleId}_trunk_${event.whichTrunk}';
+    final currentSelected = state.selectedVehicle;
+
+    // Optimistic: toggle trunk state (0=closed→1=open, anything else→0=closed)
+    if (currentSelected != null && currentSelected.id == event.vehicleId) {
+      final isFront = event.whichTrunk == 'front';
+      final currentState = isFront ? currentSelected.frontTrunkState : currentSelected.rearTrunkState;
+      final nextState = currentState == 0 ? 1 : 0;
+      emit(state.copyWith(
+        selectedVehicle: isFront
+            ? currentSelected.copyWith(frontTrunkState: nextState)
+            : currentSelected.copyWith(rearTrunkState: nextState),
+        loadingCommands: {...state.loadingCommands, cmdId},
+      ));
+    }
+
     try {
       await _repository.actuateTrunk(event.vehicleId, event.whichTrunk);
-      add(RefreshSelectedVehicle());
+      _scheduleRefresh();
     } catch (e) {
-      emit(state.copyWith(commandError: _userFriendlyError(e)));
+      emit(state.copyWith(
+        commandError: _userFriendlyError(e),
+        selectedVehicle: currentSelected,
+      ));
+    } finally {
+      emit(state.copyWith(loadingCommands: Set.from(state.loadingCommands)..remove(cmdId)));
     }
   }
 
@@ -972,7 +1001,7 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleBlocState> {
 
     try {
       await _repository.setClimateOn(event.vehicleId, event.on);
-      add(RefreshSelectedVehicle());
+      _scheduleRefresh();
     } catch (e) {
       emit(state.copyWith(
         commandError: _userFriendlyError(e),
@@ -986,29 +1015,65 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleBlocState> {
   }
 
   Future<void> _onSetTemperature(SetTemperature event, Emitter<VehicleBlocState> emit) async {
+    final currentSelected = state.selectedVehicle;
+    if (currentSelected != null && currentSelected.id == event.vehicleId) {
+      emit(state.copyWith(
+        selectedVehicle: currentSelected.copyWith(
+          driverTemp: event.temp,
+          passengerTemp: event.temp,
+        ),
+      ));
+    }
     try {
       await _repository.setTemperature(event.vehicleId, event.temp);
-      add(RefreshSelectedVehicle());
+      _scheduleRefresh();
     } catch (e) {
-      emit(state.copyWith(commandError: _userFriendlyError(e)));
+      emit(state.copyWith(
+        commandError: _userFriendlyError(e),
+        selectedVehicle: currentSelected,
+      ));
     }
   }
 
   Future<void> _onSetSeatHeater(SetSeatHeater event, Emitter<VehicleBlocState> emit) async {
+    final currentSelected = state.selectedVehicle;
+    if (currentSelected != null && currentSelected.id == event.vehicleId) {
+      Vehicle updated = currentSelected;
+      switch (event.heater) {
+        case 0: updated = currentSelected.copyWith(seatHeaterLeft: event.level); break;
+        case 1: updated = currentSelected.copyWith(seatHeaterRight: event.level); break;
+        case 2: updated = currentSelected.copyWith(seatHeaterRearLeft: event.level); break;
+        case 3: updated = currentSelected.copyWith(seatHeaterRearRight: event.level); break;
+        case 4: updated = currentSelected.copyWith(seatHeaterRearCenter: event.level); break;
+      }
+      emit(state.copyWith(selectedVehicle: updated));
+    }
     try {
       await _repository.setSeatHeater(event.vehicleId, event.heater, event.level);
-      add(RefreshSelectedVehicle());
+      _scheduleRefresh();
     } catch (e) {
-      emit(state.copyWith(commandError: _userFriendlyError(e)));
+      emit(state.copyWith(
+        commandError: _userFriendlyError(e),
+        selectedVehicle: currentSelected,
+      ));
     }
   }
 
   Future<void> _onSetChargeLimit(SetChargeLimit event, Emitter<VehicleBlocState> emit) async {
+    final currentSelected = state.selectedVehicle;
+    if (currentSelected != null && currentSelected.id == event.vehicleId) {
+      emit(state.copyWith(
+        selectedVehicle: currentSelected.copyWith(chargeLimitSoc: event.limit),
+      ));
+    }
     try {
       await _repository.setChargeLimit(event.vehicleId, event.limit);
-      add(RefreshSelectedVehicle());
+      _scheduleRefresh();
     } catch (e) {
-      emit(state.copyWith(commandError: _userFriendlyError(e)));
+      emit(state.copyWith(
+        commandError: _userFriendlyError(e),
+        selectedVehicle: currentSelected,
+      ));
     }
   }
 
@@ -1031,7 +1096,7 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleBlocState> {
       } else {
         await _repository.stopCharging(event.vehicleId);
       }
-      add(RefreshSelectedVehicle());
+      _scheduleRefresh();
     } catch (e) {
       emit(state.copyWith(
         commandError: _userFriendlyError(e),
@@ -1045,11 +1110,20 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleBlocState> {
   }
 
   Future<void> _onSetChargingAmps(SetChargingAmps event, Emitter<VehicleBlocState> emit) async {
+    final currentSelected = state.selectedVehicle;
+    if (currentSelected != null && currentSelected.id == event.vehicleId) {
+      emit(state.copyWith(
+        selectedVehicle: currentSelected.copyWith(chargeCurrentRequest: event.amps),
+      ));
+    }
     try {
       await _repository.setChargingAmps(event.vehicleId, event.amps);
-      add(RefreshSelectedVehicle());
+      _scheduleRefresh();
     } catch (e) {
-      emit(state.copyWith(commandError: _userFriendlyError(e)));
+      emit(state.copyWith(
+        commandError: _userFriendlyError(e),
+        selectedVehicle: currentSelected,
+      ));
     }
   }
 
@@ -1092,7 +1166,7 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleBlocState> {
 
     try {
       await _repository.setSentryMode(event.vehicleId, event.on);
-      add(RefreshSelectedVehicle());
+      _scheduleRefresh();
     } catch (e) {
       emit(state.copyWith(
         commandError: 'Sentry mode command failed: ${e.toString()}',
@@ -1119,7 +1193,7 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleBlocState> {
 
     try {
       await _repository.setValetMode(event.vehicleId, event.on, password: event.password);
-      add(RefreshSelectedVehicle());
+      _scheduleRefresh();
     } catch (e) {
       emit(state.copyWith(
         commandError: 'Valet mode command failed: ${e.toString()}',
@@ -1192,7 +1266,7 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleBlocState> {
 
     try {
       await _repository.setClimateKeeperMode(event.vehicleId, event.mode);
-      add(RefreshSelectedVehicle());
+      _scheduleRefresh();
     } catch (e) {
       emit(state.copyWith(
         commandError: 'Climate keeper mode failed: ${e.toString()}',
@@ -1216,7 +1290,7 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleBlocState> {
 
     try {
       await _repository.openChargePort(event.vehicleId);
-      add(RefreshSelectedVehicle());
+      _scheduleRefresh();
     } catch (e) {
       emit(state.copyWith(
         commandError: 'Charge port open failed: ${e.toString()}',
@@ -1240,7 +1314,7 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleBlocState> {
 
     try {
       await _repository.closeChargePort(event.vehicleId);
-      add(RefreshSelectedVehicle());
+      _scheduleRefresh();
     } catch (e) {
       emit(state.copyWith(
         commandError: 'Charge port close failed: ${e.toString()}',
@@ -1254,7 +1328,7 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleBlocState> {
   Future<void> _onSetScheduledCharging(SetScheduledCharging event, Emitter<VehicleBlocState> emit) async {
     try {
       await _repository.setScheduledCharging(event.vehicleId, event.enable, startTime: event.startTime);
-      add(RefreshSelectedVehicle());
+      _scheduleRefresh();
     } catch (e) {
       emit(state.copyWith(commandError: 'Scheduled charging failed: ${e.toString()}'));
     }
@@ -1400,7 +1474,7 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleBlocState> {
     emit(state.copyWith(loadingCommands: {...state.loadingCommands, cmdId}));
     try {
       await _repository.setBioweaponMode(event.vehicleId, event.on);
-      add(RefreshSelectedVehicle());
+      _scheduleRefresh();
     } catch (e) {
       emit(state.copyWith(commandError: _userFriendlyError(e)));
     } finally {
@@ -1411,7 +1485,7 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleBlocState> {
   Future<void> _onSetCabinOverheatProtection(SetCabinOverheatProtection event, Emitter<VehicleBlocState> emit) async {
     try {
       await _repository.setCabinOverheatProtection(event.vehicleId, on: event.on, fanOnly: event.fanOnly);
-      add(RefreshSelectedVehicle());
+      _scheduleRefresh();
     } catch (e) {
       emit(state.copyWith(commandError: _userFriendlyError(e)));
     }
@@ -1428,7 +1502,7 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleBlocState> {
   Future<void> _onSetPreconditioningMax(SetPreconditioningMax event, Emitter<VehicleBlocState> emit) async {
     try {
       await _repository.setPreconditioningMax(event.vehicleId, event.on);
-      add(RefreshSelectedVehicle());
+      _scheduleRefresh();
     } catch (e) {
       emit(state.copyWith(commandError: _userFriendlyError(e)));
     }
@@ -1439,7 +1513,7 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleBlocState> {
     emit(state.copyWith(loadingCommands: {...state.loadingCommands, cmdId}));
     try {
       await _repository.chargeMaxRange(event.vehicleId);
-      add(RefreshSelectedVehicle());
+      _scheduleRefresh();
     } catch (e) {
       emit(state.copyWith(commandError: _userFriendlyError(e)));
     } finally {
@@ -1452,7 +1526,7 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleBlocState> {
     emit(state.copyWith(loadingCommands: {...state.loadingCommands, cmdId}));
     try {
       await _repository.chargeStandard(event.vehicleId);
-      add(RefreshSelectedVehicle());
+      _scheduleRefresh();
     } catch (e) {
       emit(state.copyWith(commandError: _userFriendlyError(e)));
     } finally {
@@ -1463,7 +1537,7 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleBlocState> {
   Future<void> _onSetSeatCooler(SetSeatCooler event, Emitter<VehicleBlocState> emit) async {
     try {
       await _repository.setSeatCooler(event.vehicleId, event.seatPosition, event.level);
-      add(RefreshSelectedVehicle());
+      _scheduleRefresh();
     } catch (e) {
       emit(state.copyWith(commandError: _userFriendlyError(e)));
     }
@@ -1472,7 +1546,7 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleBlocState> {
   Future<void> _onSetCopTemp(SetCopTemp event, Emitter<VehicleBlocState> emit) async {
     try {
       await _repository.setCopTemp(event.vehicleId, event.copTemp);
-      add(RefreshSelectedVehicle());
+      _scheduleRefresh();
     } catch (e) {
       emit(state.copyWith(commandError: _userFriendlyError(e)));
     }
@@ -1481,7 +1555,7 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleBlocState> {
   Future<void> _onSetSteeringWheelHeatLevel(SetSteeringWheelHeatLevel event, Emitter<VehicleBlocState> emit) async {
     try {
       await _repository.setSteeringWheelHeatLevel(event.vehicleId, event.level);
-      add(RefreshSelectedVehicle());
+      _scheduleRefresh();
     } catch (e) {
       emit(state.copyWith(commandError: _userFriendlyError(e)));
     }
@@ -1508,7 +1582,7 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleBlocState> {
     emit(state.copyWith(loadingCommands: {...state.loadingCommands, cmdId}));
     try {
       await _repository.scheduleSoftwareUpdate(event.vehicleId, event.offsetSec);
-      add(RefreshSelectedVehicle());
+      _scheduleRefresh();
     } catch (e) {
       emit(state.copyWith(commandError: _userFriendlyError(e)));
     } finally {
@@ -1521,7 +1595,7 @@ class VehicleBloc extends Bloc<VehicleEvent, VehicleBlocState> {
     emit(state.copyWith(loadingCommands: {...state.loadingCommands, cmdId}));
     try {
       await _repository.cancelSoftwareUpdate(event.vehicleId);
-      add(RefreshSelectedVehicle());
+      _scheduleRefresh();
     } catch (e) {
       emit(state.copyWith(commandError: _userFriendlyError(e)));
     } finally {
