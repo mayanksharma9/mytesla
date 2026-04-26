@@ -47,8 +47,9 @@ void main(List<String> args) async {
 
     // Get or create signer. A single TVCPSigner holds sessions for BOTH domains
     // (VCSEC and INFOTAINMENT) so we never lose a healthy domain when retrying.
-    signers.putIfAbsent(vin, () => TVCPSigner(vin));
-    final signer = signers[vin]!;
+    final vinUpper = vin.toUpperCase();
+    signers.putIfAbsent(vinUpper, () => TVCPSigner(vinUpper));
+    final signer = signers[vinUpper]!;
 
     // Regional fleet API base URL forwarded from the Flutter client.
     final fleetBaseUrl = request.headers['x-fleet-api-base-url'];
@@ -144,8 +145,8 @@ void main(List<String> args) async {
           if (retryError.isNotEmpty) {
             final retryErrLow = retryError.toLowerCase();
             if (retryErrLow.contains('unauthorized') || retryErrLow.contains('key not on whitelist')) {
-              // Permanent — key not registered. Return 403 immediately.
-              signers.remove(vin);
+              // Permanent — key not registered.
+              signer.resetDomain(domain);
               return Response.forbidden(jsonEncode({
                 'error': retryError,
                 'type': 'VirtualKeyNotRegistered',
@@ -173,18 +174,18 @@ void main(List<String> args) async {
 
         // 5. Key not on whitelist (permanent) → 403.
         else if (errStr.contains('key not on whitelist') || errStr.contains('whitelist')) {
-          signers.remove(vin);
+          signers.remove(vinUpper);
           return Response.forbidden(jsonEncode({
             'error': resError.toString(),
             'type': 'VirtualKeyNotRegistered',
           }), headers: {'Content-Type': 'application/json'});
         }
 
-        // 6. Anything else — clear session so the next request re-handshakes cleanly,
+        // 6. Anything else — reset domain so the next request re-handshakes cleanly,
         //    but still return the error body so the client has full context.
         else {
-          print('TVCPProxy[$vin]: unclassified error "$resError" — clearing session for next request.');
-          signers.remove(vin);
+          print('TVCPProxy[$vin]: unclassified error "$resError" — resetting domain $domain.');
+          signer.resetDomain(domain);
         }
       }
 
@@ -240,7 +241,7 @@ void main(List<String> args) async {
                        fault == MessageFault_E.MESSAGEFAULT_ERROR_INACTIVE_KEY ||
                        fault == MessageFault_E.MESSAGEFAULT_ERROR_INSUFFICIENT_PRIVILEGES ||
                        fault == MessageFault_E.MESSAGEFAULT_ERROR_KEYCHAIN_IS_FULL) {
-                signers.remove(vin);
+                signers.remove(vinUpper);
                 return Response.forbidden(
                   jsonEncode({'error': faultName, 'type': 'VirtualKeyNotRegistered'}),
                   headers: {'Content-Type': 'application/json'},
@@ -295,7 +296,7 @@ void main(List<String> args) async {
 
       // Virtual key whitelist rejection → 403.
       if (msg.contains('whitelist') || msg.contains('Key not on')) {
-        signers.remove(vin);
+        signers.remove(vinUpper);
         return Response.forbidden(jsonEncode({
           'error': msg,
           'type': 'VirtualKeyNotRegistered',
@@ -304,7 +305,7 @@ void main(List<String> args) async {
 
       // Session setup failure → clear signer so next request re-handshakes.
       if (msg.contains('Session') || msg.contains('handshake')) {
-        signers.remove(vin);
+        signers.remove(vinUpper);
       }
 
       return Response.internalServerError(body: jsonEncode({

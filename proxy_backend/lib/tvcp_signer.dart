@@ -33,6 +33,12 @@ class TVCPSession {
     hmacKey = derivedHmacKey;
     vehiclePublicKey = info.publicKey;
   }
+
+  void reset() {
+    epoch = null;
+    hmacKey = null;
+    clockDeltaSeconds = null;
+  }
 }
 
 class TVCPSigner {
@@ -102,16 +108,18 @@ class TVCPSigner {
     _sessions[domain]!.update(info, Uint8List.fromList(hmacKeyBytes.bytes));
   }
 
-  bool isSessionReady(Domain domain) {
-    return _sessions[domain]!.isReady;
+  void resetDomain(Domain domain) {
+    _sessions[domain]?.reset();
+    print('TVCPSigner[$vin]: reset session for $domain');
   }
 
-  /// Resets only the specified domain's session, preserving the other domain.
-  /// Use this on retry so a failing INFOTAINMENT re-handshake doesn't also
-  /// invalidate a perfectly healthy VCSEC session, and vice versa.
-  void resetDomain(Domain domain) {
-    _sessions[domain] = TVCPSession(domain);
-    print('TVCPSigner[$vin]: reset session for $domain');
+  bool isSessionReady(Domain domain) {
+    final s = _sessions[domain];
+    return s != null && s.isReady;
+  }
+
+  static String _toHex(List<int> bytes) {
+    return bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
   }
 
   static Domain getDomainForCommand(String commandName) {
@@ -675,55 +683,97 @@ class TVCPSigner {
     final session = _sessions[domain]!;
 
     if (!session.isReady) {
-      throw Exception('Session not ready for $domain. Handshake may be required.');
+      throw Exception('Session not ready for $domain for VIN $vin. Handshake may be required.');
     }
 
-    // Prepare metadata
-    session.counter += 1;
-    final now = (DateTime.now().millisecondsSinceEpoch / 1000).round();
-    final expiresAt = now - session.clockDeltaSeconds! + 30; // 30s window in vehicle time
-    print('TVCPSigner[$vin]: signing $commandName domain=$domain '
-        'counter=${session.counter} clockDelta=${session.clockDeltaSeconds} '
-        'expiresAt=$expiresAt epochLen=${session.epoch!.length} '
-        'hmacKeyLen=${session.hmacKey!.length}');
+    // 2. Build Metadata TLV sequence (strictly ordered by tag)
+    // -------------------------------------------------------------------------
+    // Protocol requirement: Tags and Lengths are 2-byte Big-Endian integers.
+    // 0: TAG_SIGNATURE_TYPE (HMAC_PERSONALIZED = 8)
+    // 1: TAG_DOMAIN
+    // 2: TAG_PERSONALIZATION (VIN)
+    // 3: TAG_EPOCH (Session ID)
+    // 4: TAG_EXPIRES_AT
+    // 5: TAG_COUNTER
+    // 7: TAG_FLAGS
+    // 255: TAG_END (0xFF) -> Special 1-byte terminal marker
+    
+    final List<int> metadata = [];
 
+    void addTLV(int tag, List<int> val) {
+      // 1-byte Tag
+      metadata.add(tag & 0xFF);
+      // 1-byte Length
+      metadata.add(val.length & 0xFF);
+      // Value
+      metadata.addAll(val);
+    }
+
+    // Tag 0: Signature Type (1 byte value)
+    // NOTE: Aligned with mobile app code (using value 8) despite conflicting comments.
+    addTLV(0, [SignatureType.SIGNATURE_TYPE_HMAC_PERSONALIZED.value]);
+
+    // Tag 1: Domain (1 byte value)
+    // NOTE: Using raw Protobuf enum value (2 or 3) as per mobile app code.
+    addTLV(1, [domain.value]);
+
+    // Tag 2: Personalization (17 bytes VIN)
+    addTLV(2, utf8.encode(vin));
+
+    // Tag 3: Epoch (16-20 bytes)
+    addTLV(3, session.epoch!);
+
+    // Tag 4: ExpiresAt (4 bytes Big-Endian)
+    final vehicleNow = (DateTime.now().millisecondsSinceEpoch / 1000).round() - session.clockDeltaSeconds!;
+    final expiresAt = vehicleNow + 30; // 30s window
+    final expBuffer = ByteData(4)..setUint32(0, expiresAt, Endian.big);
+    addTLV(4, expBuffer.buffer.asUint8List());
+
+    // Tag 5: Counter (4 bytes Big-Endian)
+    // Increment BEFORE capturing, matching Tesla Go SDK: s.counter++; counter := s.counter
+    // The vehicle requires counter > last_seen (not >=), so we must send info.counter+1
+    // on the first command after handshake, not info.counter itself.
+    session.counter++;
+    final currentCounter = session.counter;
+    final cntBuffer = ByteData(4)..setUint32(0, currentCounter, Endian.big);
+    addTLV(5, cntBuffer.buffer.asUint8List());
+
+    // Terminate with 1-byte TAG_END (0xFF)
+    metadata.add(Tag.TAG_END.value);
+    
+    final metadataBytes = Uint8List.fromList(metadata);
+
+    // 3. Compute HMAC-SHA256(K', metadata || payload)
+    // -------------------------------------------------------------------------
+    final hmac = Hmac(sha256, session.hmacKey!);
+    final hmacInputBuilder = BytesBuilder();
+    hmacInputBuilder.add(metadataBytes);
+    hmacInputBuilder.add(payloadBytes);
+    
+    final hmacInput = hmacInputBuilder.toBytes();
+    final tagDigest = hmac.convert(hmacInput);
+
+    // CRITICAL: Hex logs for protocol verification
+    final metadataHex = _toHex(metadataBytes);
+    final inputHex = _toHex(hmacInput);
+    final keyHex = _toHex(session.hmacKey!);
+    
+    print('TVCPSigner[$vin]: signing $commandName domain=$domain counter=${session.counter}');
+    print('TVCPSigner[$vin]: metadataHex=$metadataHex');
+    print('TVCPSigner[$vin]: hmacKeyPrefix=${keyHex.substring(0, 8)}');
+    print('TVCPSigner[$vin]: tagResult=${_toHex(Uint8List.fromList(tagDigest.bytes))}');
+
+    // 4. Wrap into RoutableMessage
+    // -------------------------------------------------------------------------
     final hmacData = HMAC_Personalized_Signature_Data(
       epoch: session.epoch,
-      counter: session.counter,
+      counter: currentCounter,
       expiresAt: expiresAt,
+      tag: tagDigest.bytes,
     );
 
-    final metadata = BytesBuilder();
-    metadata.add([Tag.TAG_SIGNATURE_TYPE.value, 1, SignatureType.SIGNATURE_TYPE_HMAC_PERSONALIZED.value]);
-    metadata.add([Tag.TAG_DOMAIN.value, 1, domain.value]);
-    
-    final vinBytes = utf8.encode(vin);
-    metadata.add([Tag.TAG_PERSONALIZATION.value, vinBytes.length]);
-    metadata.add(vinBytes);
-
-    metadata.add([Tag.TAG_EPOCH.value, session.epoch!.length]);
-    metadata.add(session.epoch!);
-
-    metadata.add([Tag.TAG_EXPIRES_AT.value, 4]);
-    metadata.add(_uint32ToBytes(expiresAt));
-
-    metadata.add([Tag.TAG_COUNTER.value, 4]);
-    metadata.add(_uint32ToBytes(session.counter));
-
-    metadata.add([Tag.TAG_END.value]);
-
-    final metadataBytes = metadata.toBytes();
-    
-    final hmac = Hmac(sha256, session.hmacKey!);
-    final tagBuilder = BytesBuilder();
-    tagBuilder.add(metadataBytes);
-    tagBuilder.add(payloadBytes);
-    final tagDigest = hmac.convert(tagBuilder.toBytes());
-
-    hmacData.tag = tagDigest.bytes;
-
-    final pubKeyB64 = SecurityUtils().publicKey;
-    final pubKeyBytes = base64Decode(pubKeyB64);
+    final security = SecurityUtils();
+    final pubKeyBytes = security.publicKeyBytes;
 
     final signatureData = SignatureData(
       signerIdentity: KeyIdentity(publicKey: pubKeyBytes),
