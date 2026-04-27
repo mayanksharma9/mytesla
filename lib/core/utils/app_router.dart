@@ -6,7 +6,6 @@ import 'package:voltride/features/auth/presentation/pages/welcome_page.dart';
 import 'package:voltride/features/dashboard/presentation/pages/home_page.dart';
 import 'package:voltride/features/dashboard/presentation/pages/vehicle_selector_page.dart';
 import 'package:voltride/features/dashboard/presentation/pages/main_scaffold.dart';
-import 'package:voltride/features/dashboard/presentation/bloc/vehicle_bloc.dart';
 import 'package:voltride/features/charging/presentation/pages/charging_page.dart';
 import 'package:voltride/features/charging/presentation/pages/charging_history_page.dart';
 import 'package:voltride/features/charging/presentation/pages/nearby_superchargers_page.dart';
@@ -217,7 +216,6 @@ class AppRouter {
     ],
     redirect: (context, state) {
       final authState = sl<AuthBloc>().state;
-      final vehicleState = sl<VehicleBloc>().state;
       
       final bool isAuthRoute = state.matchedLocation == '/welcome' || 
                               state.matchedLocation == '/splash';

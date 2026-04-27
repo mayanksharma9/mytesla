@@ -4,7 +4,7 @@ import 'package:equatable/equatable.dart';
 import '../../domain/auth_repository.dart';
 import '../../domain/security_repository.dart';
 import 'package:voltride/features/dashboard/data/models/tesla_models.dart';
-import 'package:voltride/core/network/tesla_api_client.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 // States
 enum AuthStatus { initial, authenticated, unauthenticated, loading, error }
@@ -55,7 +55,6 @@ class LoginRequested extends AuthEvent {}
 
 class LogoutRequested extends AuthEvent {}
 
-
 class ProfileFetched extends AuthEvent {
   final UserProfile profile;
   const ProfileFetched(this.profile);
@@ -76,7 +75,6 @@ class ToggleVirtualKeyStatus extends AuthEvent {
 class AuthBloc extends Bloc<AuthEvent, AuthState> {
   final AuthRepository _authRepository;
   final SecurityRepository _securityRepository;
-  StreamSubscription? _sessionExpiredSub;
 
   AuthBloc(this._authRepository, this._securityRepository) : super(const AuthState()) {
     on<AppStarted>(_onAppStarted);
@@ -84,21 +82,10 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     on<LogoutRequested>(_onLogoutRequested);
     on<ProfileFetched>(_onProfileFetched);
     on<ToggleVirtualKeyStatus>(_onToggleVirtualKeyStatus);
-
-    // Auto-logout when TeslaApiClient detects an invalidated refresh token.
-    _sessionExpiredSub = TeslaApiClient.sessionExpired.listen((_) {
-      add(LogoutRequested());
-    });
-  }
-
-  @override
-  Future<void> close() {
-    _sessionExpiredSub?.cancel();
-    return super.close();
   }
 
   Future<void> _onAppStarted(AppStarted event, Emitter<AuthState> emit) async {
-    print('AuthBloc: AppStarted event received');
+    debugPrint('AuthBloc: AppStarted event received');
     emit(state.copyWith(status: AuthStatus.loading));
     
     final isKeyRegistered = await _securityRepository.isKeyAsRegistered();
@@ -107,43 +94,36 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       isVirtualKeyRegistered: isKeyRegistered,
     ));
 
-    final token = await _authRepository.getAccessToken();
-    if (token != null) {
-      print('AuthBloc: Token found, refreshing...');
-      final refreshed = await _authRepository.refreshToken();
-      if (refreshed) {
-        print('AuthBloc: Token refresh successful');
-        emit(state.copyWith(status: AuthStatus.authenticated));
-        
-        try {
-          final profile = await _authRepository.getUserProfile();
-          add(ProfileFetched(profile));
-        } catch (e) {
-          print('AuthBloc: Failed to fetch profile on start: $e');
-        }
-      } else {
-        print('AuthBloc: Token refresh failed, clearing session');
-        await _authRepository.logout();
-        emit(state.copyWith(status: AuthStatus.unauthenticated));
+    // Check Firebase Auth status
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser != null) {
+      debugPrint('AuthBloc: User is authenticated with Firebase');
+      emit(state.copyWith(status: AuthStatus.authenticated));
+      
+      try {
+        final profile = await _authRepository.getUserProfile();
+        add(ProfileFetched(profile));
+      } catch (e) {
+        debugPrint('AuthBloc: Failed to fetch profile on start: $e');
       }
     } else {
-      print('AuthBloc: No token found');
+      debugPrint('AuthBloc: No user found in Firebase');
       emit(state.copyWith(status: AuthStatus.unauthenticated));
     }
   }
 
   Future<void> _onLoginRequested(LoginRequested event, Emitter<AuthState> emit) async {
-    print('AuthBloc: LoginRequested event received');
+    debugPrint('AuthBloc: LoginRequested event received');
     emit(state.copyWith(status: AuthStatus.loading, error: null));
     try {
       final success = await _authRepository.login();
       if (success) {
-        print('AuthBloc: Login succeeded');
+        debugPrint('AuthBloc: Login succeeded');
         
         // --- SILENT KEY GENERATION ---
         final hasKey = await _securityRepository.hasKeyPair();
         if (!hasKey) {
-          print('AuthBloc: Generating device key pair silently...');
+          debugPrint('AuthBloc: Generating device key pair silently...');
           await _securityRepository.generateKeyPair();
         }
 
@@ -153,14 +133,14 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
           final profile = await _authRepository.getUserProfile();
           add(ProfileFetched(profile));
         } catch (e) {
-          print('AuthBloc: Failed to fetch profile: $e');
+          debugPrint('AuthBloc: Failed to fetch profile: $e');
         }
       } else {
-        print('AuthBloc: Login failed');
+        debugPrint('AuthBloc: Login failed');
         emit(state.copyWith(status: AuthStatus.error, error: 'Login failed'));
       }
     } catch (e) {
-      print('AuthBloc: Login error: $e');
+      debugPrint('AuthBloc: Login error: $e');
       final message = e.toString().replaceFirst('Exception: ', '');
       emit(state.copyWith(status: AuthStatus.error, error: message));
     }

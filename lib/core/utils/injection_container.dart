@@ -1,10 +1,11 @@
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:get_it/get_it.dart';
 import 'package:dio/dio.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:voltride/features/dashboard/data/models/tesla_models.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:voltride/core/network/tesla_api_client.dart';
 import 'package:voltride/core/services/firestore_telemetry_service.dart';
 import 'package:voltride/features/auth/domain/auth_repository.dart';
 import 'package:voltride/features/auth/data/auth_repository_impl.dart';
@@ -38,11 +39,11 @@ Future<void> init() async {
   sl.registerLazySingleton(() => TelemetryBloc(sl()));
 
   // Repositories
-  sl.registerLazySingleton<AuthRepository>(() => AuthRepositoryImpl(sl(), sl(), sl()));
+  sl.registerLazySingleton<AuthRepository>(() => AuthRepositoryImpl(sl(), sl()));
   sl.registerLazySingleton<SecurityRepository>(() => SecurityRepositoryImpl(sl()));
   
   sl.registerLazySingleton<VehicleRepository>(() => VehicleRepositoryImpl(
-    sl(), // apiClient
+    sl(), // FirebaseFunctions
     sl<Box<BatterySnapshot>>(instanceName: 'battery_snapshots'), // batteryBox
     sl<Box<DriveSession>>(instanceName: 'trip_sessions'), // tripBox
     sl<Box<ChargeSession>>(instanceName: 'charge_sessions'), // chargeBox
@@ -51,8 +52,7 @@ Future<void> init() async {
   ));
   sl.registerLazySingleton<ChargingRepository>(() => ChargingRepositoryImpl(sl(), sl(), sl()));
   sl.registerLazySingleton<TelemetryRepository>(() => TelemetryRepositoryImpl(
-    sl(), 
-    sl(),
+    sl(), // FirebaseFunctions
     sl<Box<DriveSession>>(instanceName: 'trip_sessions'),
     sl<Box<ChargeSession>>(instanceName: 'charge_sessions'),
   ));
@@ -62,10 +62,6 @@ Future<void> init() async {
   sl.registerLazySingleton<ChargeSessionRepository>(() => ChargeSessionRepository(
     sl<Box<ChargeSession>>(instanceName: 'charge_sessions'),
   ));
-
-  // API Client
-  sl.registerLazySingleton(() => TeslaApiClient(sl(), sl(), sl()));
-
   // Services
   sl.registerLazySingleton(() => TelemetryAnalyticsService());
   sl.registerLazySingleton(() => VehicleDataService(sl()));
@@ -74,9 +70,11 @@ Future<void> init() async {
   sl.registerLazySingleton(() => FirestoreTelemetryService(sl()));
 
   // External
+  sl.registerLazySingleton(() => FirebaseFunctions.instance);
+  sl.registerLazySingleton(() => FirebaseAuth.instance);
+  sl.registerLazySingleton(() => FirebaseFirestore.instance);
   sl.registerLazySingleton(() => Dio());
   sl.registerLazySingleton(() => const FlutterSecureStorage());
-  sl.registerLazySingleton(() => FirebaseFirestore.instance);
   
   // Hive Boxes
   sl.registerLazySingleton(() => Hive.box('telemetry_history'), instanceName: 'telemetry_history');

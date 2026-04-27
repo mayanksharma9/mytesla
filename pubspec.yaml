@@ -69,11 +69,12 @@ dependencies:
   pointycastle: ^3.9.1
   fixnum: ^1.1.1
   crypto: ^3.0.7
-  cloud_firestore: ^6.2.0
-  firebase_auth: ^6.3.0
+  cloud_firestore: ^6.3.0
+  firebase_auth: ^6.4.0
   google_fonts: ^8.0.2
   flutter_local_notifications: ^18.0.1
   timezone: ^0.9.4
+  cloud_functions: ^6.2.0
 
 
 dev_dependencies:
