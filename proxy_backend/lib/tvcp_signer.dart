@@ -98,13 +98,15 @@ class TVCPSigner {
     if (vehiclePubKey.isEmpty) {
       throw Exception('TVCPSigner[$vin]: vehicle returned empty publicKey for $domain handshake — cannot derive shared secret');
     }
+    print('TVCPSigner[$vin]: vehiclePubKeyHex=${_toHex(vehiclePubKey)}');
     final sharedSecret = SecurityUtils().deriveSharedSecret(vehiclePubKey);
     if (sharedSecret == null) throw Exception('Failed to derive shared secret for $domain');
-    print('TVCPSigner[$vin]: shared secret derived (${sharedSecret.length}B) for $domain');
+    print('TVCPSigner[$vin]: sharedSecretHex=${_toHex(sharedSecret)}');
 
     final hmac = Hmac(sha256, sharedSecret);
     final hmacKeyBytes = hmac.convert(utf8.encode('authenticated command'));
-    
+    print('TVCPSigner[$vin]: fullHmacKeyHex=${_toHex(Uint8List.fromList(hmacKeyBytes.bytes))}');
+
     _sessions[domain]!.update(info, Uint8List.fromList(hmacKeyBytes.bytes));
   }
 
@@ -760,7 +762,8 @@ class TVCPSigner {
     
     print('TVCPSigner[$vin]: signing $commandName domain=$domain counter=${session.counter}');
     print('TVCPSigner[$vin]: metadataHex=$metadataHex');
-    print('TVCPSigner[$vin]: hmacKeyPrefix=${keyHex.substring(0, 8)}');
+    print('TVCPSigner[$vin]: payloadHex=${_toHex(Uint8List.fromList(payloadBytes))}');
+    print('TVCPSigner[$vin]: fullHmacKeyHex=${keyHex}');
     print('TVCPSigner[$vin]: tagResult=${_toHex(Uint8List.fromList(tagDigest.bytes))}');
 
     // 4. Wrap into RoutableMessage
